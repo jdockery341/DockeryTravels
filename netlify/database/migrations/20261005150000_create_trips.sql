@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS trips (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by TEXT
+);

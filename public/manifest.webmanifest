@@ -1,0 +1,15 @@
+{
+  "name": "DocTravels",
+  "short_name": "DocTravels",
+  "description": "The Dockery family trip planner",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eceef1",
+  "theme_color": "#0F766E",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

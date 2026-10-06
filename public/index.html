@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eceef1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0d" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="DocTravels">
+<title>DocTravels</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+@custom-variant dark (&:where(.dark, .dark *));
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", ui-sans-serif, system-ui, "Helvetica Neue", sans-serif;
+  --color-accent: #0F766E;
+  --color-accent-deep: #0B5A54;
+  --animate-rise: rise .5s cubic-bezier(.2,.8,.2,1) both;
+  --animate-pop: pop .5s cubic-bezier(.2,.8,.2,1) both;
+  --animate-fade: fade .3s ease-out both;
+  --animate-ring: ring 1.8s ease-out infinite;
+  --animate-shake: shake .4s ease-out both;
+  @keyframes rise { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+  @keyframes pop { 0% { opacity: 0; transform: scale(.4) } 70% { transform: scale(1.1) } 100% { opacity: 1; transform: scale(1) } }
+  @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes ring { 0% { transform: scale(.6); opacity: .9 } 100% { transform: scale(2.4); opacity: 0 } }
+  @keyframes shake { 0%, 100% { transform: none } 20%, 60% { transform: translateX(-6px) } 40%, 80% { transform: translateX(6px) } }
+}
+@layer components {
+  /* Liquid Glass: frosted fill, specular rim, soft lift */
+  .glass { position: relative; isolation: isolate; background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.5) brightness(1.1); backdrop-filter: blur(22px) saturate(1.5) brightness(1.1); box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-hi), inset 0 0 0 1px var(--glass-line); }
+  .glass::before { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: 1px; pointer-events: none; background: var(--glass-rim); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+  .glass::after { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; background: var(--glass-sheen); }
+  .glass-strong { background: var(--glass-bg-strong); -webkit-backdrop-filter: blur(28px) saturate(1.6); backdrop-filter: blur(28px) saturate(1.6); }
+  .lens { background: var(--lens-bg); box-shadow: var(--lens-shadow); }
+  .tile::before { content: ''; position: absolute; left: 23px; top: 0; bottom: 0; width: 2px; background: var(--rail); }
+  .tile:first-child::before { top: 30px; }
+  .tile:last-child::before { bottom: calc(100% - 30px); }
+  .tile:only-child::before { display: none; }
+}
+</style>
+<style>
+  :root { --glass-bg: rgba(255,255,255,.46); --glass-bg-strong: rgba(255,255,255,.76); --glass-hi: rgba(255,255,255,.95); --glass-line: rgba(255,255,255,.35); --glass-rim: linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,.35) 28%, rgba(255,255,255,.1) 55%, rgba(255,255,255,.85) 100%); --glass-sheen: radial-gradient(130% 90% at 18% 0%, rgba(255,255,255,.5), transparent 55%), linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,0) 60%); --glass-shadow: 0 14px 40px -12px rgba(15,25,35,.3), 0 1px 2px rgba(0,0,0,.06); --lens-bg: rgba(255,255,255,.94); --lens-shadow: 0 3px 12px rgba(0,0,0,.1), inset 0 1px 0 #fff; --rail: rgba(0,0,0,.09); --wash: radial-gradient(120% 55% at 50% -5%, rgba(15,118,110,.14), transparent 60%), linear-gradient(180deg, #EEF0F3 0%, #E1E6E9 100%); }
+  .dark { --glass-bg: rgba(28,28,32,.42); --glass-bg-strong: rgba(30,30,33,.82); --glass-hi: rgba(255,255,255,.2); --glass-line: rgba(255,255,255,.08); --glass-rim: linear-gradient(135deg, rgba(255,255,255,.5) 0%, rgba(255,255,255,.12) 28%, rgba(255,255,255,.03) 55%, rgba(255,255,255,.3) 100%); --glass-sheen: radial-gradient(130% 90% at 18% 0%, rgba(255,255,255,.14), transparent 55%); --glass-shadow: 0 14px 40px -12px rgba(0,0,0,.7), 0 1px 2px rgba(0,0,0,.4); --lens-bg: rgba(255,255,255,.16); --lens-shadow: 0 3px 12px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.25); --rail: rgba(255,255,255,.12); --wash: radial-gradient(120% 55% at 50% -5%, rgba(15,118,110,.22), transparent 60%), linear-gradient(180deg, #121416 0%, #0A0C0D 100%); }
+  html { -webkit-tap-highlight-color: transparent; }
+  button { cursor: pointer; }
+  #trip.hidden { display: none !important; }
+  .leaflet-container { background: #0b1014; font: inherit; }
+  .leaflet-div-icon { background: transparent; border: 0; }
+  .leaflet-container .leaflet-tile { max-width: none !important; max-height: none !important; }
+  .leaflet-marker-icon { transition: transform .3s cubic-bezier(.2,.8,.2,1); }
+  .no-scrollbar::-webkit-scrollbar { display: none } .no-scrollbar { scrollbar-width: none }
+  .stripes { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 10px, transparent 10px 20px); }
+</style>
+</head>
+<body class="h-full font-sans antialiased bg-[#ECEEF1] text-zinc-900 dark:bg-[#0B0B0D] dark:text-zinc-50 overscroll-none">
+
+<div id="dash" class="min-h-full [background:var(--wash)]"></div>
+
+<div id="trip" class="hidden fixed inset-0 lg:grid lg:grid-cols-[440px_minmax(0,1fr)]">
+  <div id="sheet" class="fixed inset-x-0 bottom-0 z-20 flex h-[80dvh] flex-col gap-2.5 px-3 transition-[transform,padding-bottom] duration-500 ease-[cubic-bezier(.2,.8,.2,1)] lg:static lg:z-auto lg:h-full lg:px-5 lg:[background:var(--wash)] lg:border-r lg:border-black/5 lg:dark:border-white/10" style="padding-bottom:calc(var(--sab) + 88px)"></div>
+  <div id="mapwrap" class="absolute inset-0 lg:relative lg:h-full">
+    <div id="map" class="absolute inset-0 z-0"></div>
+    <div id="hud" class="absolute inset-x-3 z-10 lg:inset-x-5" style="top:calc(var(--sat) + 12px)"></div>
+    <div id="crosshair" class="hidden absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-full pointer-events-none text-accent drop-shadow-lg"></div>
+    <div id="mapctl" class="absolute right-3 z-10 flex flex-col items-end gap-2.5 transition-[bottom,opacity] duration-500 ease-[cubic-bezier(.2,.8,.2,1)] lg:right-6"></div>
+    <div id="attrib" class="absolute left-3 z-10 rounded-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md px-2 py-0.5 text-[10px] text-zinc-600 dark:text-zinc-300 transition-[bottom,opacity] duration-500 ease-[cubic-bezier(.2,.8,.2,1)]"></div>
+  </div>
+  <nav id="tabbar" class="fixed inset-x-3 bottom-[var(--tb)] z-[45] lg:inset-x-auto lg:left-5 lg:bottom-5 lg:w-[400px]" style="--tb:calc(var(--sab) + 10px)"></nav>
+</div>
+
+<div id="modal"></div>
+<div id="lightbox" class="hidden fixed inset-0 z-[55] select-none"></div>
+<div id="gate" class="hidden fixed inset-0 z-50 grid place-items-center overflow-y-auto [background:var(--wash)] p-6"></div>
+<div id="toast" class="pointer-events-none fixed inset-x-0 z-[60] flex justify-center" style="bottom:calc(var(--sab) + 90px)"></div>
+
+<script>
+// ---------- utilities ----------
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 12) : Math.random().toString(36).slice(2, 14));
+const FRAME = new URLSearchParams(location.search).has('frame');
+document.documentElement.style.setProperty('--sat', FRAME ? '54px' : 'env(safe-area-inset-top, 0px)');
+document.documentElement.style.setProperty('--sab', FRAME ? '22px' : 'env(safe-area-inset-bottom, 0px)');
+const isDesktop = () => matchMedia('(min-width: 1024px)').matches;
+document.addEventListener('animationend', ev => { const el = ev.target; if (!(el instanceof Element)) return; ['animate-rise', 'animate-fade', 'animate-pop', 'animate-shake'].forEach(c => el.classList.remove(c)); if (el.style.animationDelay) el.style.animationDelay = ''; });
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const fmtTime = t => { if (!t) return 'Anytime'; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
+const timeKey = e => e.time || '99:99';
+const fmtDate = (iso, o) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', o);
+const rangeLabel = (a, b) => { const A = new Date(a + 'T12:00'), B = new Date(b + 'T12:00'); const same = A.getMonth() === B.getMonth(); return `${A.toLocaleDateString('en-US', {month:'short', day:'numeric'})} – ${B.toLocaleDateString('en-US', same ? {day:'numeric'} : {month:'short', day:'numeric'})}, ${B.getFullYear()}`; };
+const daysUntil = iso => Math.ceil((new Date(iso + 'T00:00') - new Date().setHours(0, 0, 0, 0)) / 864e5);
+const datesBetween = (a, b) => { const out = []; const d = new Date(a + 'T12:00'); const end = new Date(b + 'T12:00'); while (d <= end) { out.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); } return out; };
+const pinned = e => e && e.lat != null && e.lng != null;
+
+const ICON = {
+  back: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>',
+  chevron: '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  plus: '<svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  close: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  check: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  search: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  locate: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>',
+  layers: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
+  pin: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  pinSm: '<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  pinBig: '<svg class="size-12" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="1.2" stroke-linejoin="round"><path d="M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5" fill="white" stroke="none"/></svg>',
+  link: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+  photo: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 8"/></svg>',
+  home: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h4.5v-5.5h4v5.5h4.5V10"/></svg>',
+  route: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M6 8v5.5a2.5 2.5 0 0 0 2.5 2.5H18"/></svg>',
+};
+const CATS = {
+  food: { label: 'Food & drink', dot: 'bg-orange-500' },
+  sight: { label: 'Sight', dot: 'bg-accent' },
+  outdoors: { label: 'Outdoors', dot: 'bg-lime-600' },
+  stay: { label: 'Stay', dot: 'bg-violet-500' },
+  transit: { label: 'Transit', dot: 'bg-zinc-400' },
+};
+
+// ---------- the family (edit names here) ----------
+const MEMBERS = [{ name: 'Jeremiah', initial: 'J' }, { name: 'K', initial: 'K' }, { name: 'E', initial: 'E' }, { name: 'N', initial: 'N' }];
+const EVERYONE = () => MEMBERS.map(m => m.name);
+const memberOf = name => MEMBERS.find(m => m.name === name) || { name, initial: String(name || '?')[0].toUpperCase() };
+// trip.access = { name: 'edit' | 'view' }; anyone missing can't see the trip. Older trips: travelers → edit, others → view; nothing set → everyone edits
+const ROLES = [['edit', 'Edit'], ['view', 'View'], ['none', 'Hidden']];
+function roleOf(t, name) { if (t.access) return t.access[name] || null; if (t.travelers && t.travelers.length) return t.travelers.includes(name) ? 'edit' : 'view'; return 'edit'; }
+const accessOf = t => Object.fromEntries(EVERYONE().map(n => [n, roleOf(t, n) || 'none']));
+const peopleOf = t => EVERYONE().filter(n => roleOf(t, n)).map(memberOf);
+const coverOf = t => t.cover === undefined ? ((SEED_TRIPS.find(s => s.id === t.id) || {}).cover || '') : t.cover;
+
+// ---------- the trip ----------
+const E = (cityId, date, time, name, cat, lat, lng, extra = {}) => ({ id: uid(), cityId, date, time, name, cat, lat, lng, address: '', links: {}, cost: '', conf: '', rating: 0, notes: [], photos: [], by: 'Jeremiah', ...extra });
+let seedN = 0;
+const S = (cityId, date, time, name, cat, lat, lng, extra = {}) => E(cityId, date, time, name, cat, lat, lng, { ...extra, id: 'bcn26-' + (++seedN) });
+const SEED_TRIPS = [{
+  id: 'barcelona-2026', name: 'Barcelona', start: '2026-10-07', end: '2026-10-20', access: Object.fromEntries(EVERYONE().map(n => [n, 'edit'])), cover: 'covers/barcelona.jpg',
+  cities: [
+    { id: 'barcelona', name: 'Barcelona', country: 'Spain', center: [41.3874, 2.1686], dates: ['2026-10-07', '2026-10-08', '2026-10-09', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20'] },
+    { id: 'marseille', name: 'Marseille', country: 'France', center: [43.2965, 5.3698], dates: ['2026-10-10'] },
+    { id: 'florence', name: 'Florence', country: 'Italy', center: [43.7696, 11.2558], dates: ['2026-10-11'] },
+    { id: 'rome', name: 'Rome', country: 'Italy', center: [41.8933, 12.4829], dates: ['2026-10-12'] },
+    { id: 'naples', name: 'Naples', country: 'Italy', center: [40.8450, 14.2600], dates: ['2026-10-13'] },
+    { id: 'sea', name: 'At Sea', country: 'Mediterranean', center: [39.4, 12.6], zoom: 6, dates: ['2026-10-14', '2026-10-16'] },
+    { id: 'malta', name: 'Malta', country: '', center: [35.92, 14.45], zoom: 11, dates: ['2026-10-15'] },
+  ],
+  entries: [
+    S('barcelona', '2026-10-07', '22:05', 'Delta 0194 departs', 'transit', null, null, { address: 'Lands in Barcelona 12:50 PM on Oct 8', conf: 'DL 0194' }),
+    S('barcelona', '2026-10-08', '12:50', 'Land at BCN · Delta 0194', 'transit', 41.2974, 2.0833, { address: 'Aeroport Josep Tarradellas Barcelona–El Prat', conf: 'DL 0194' }),
+    S('barcelona', '2026-10-08', '15:00', 'Check in · Nouvel Hotel', 'stay', 41.3857, 2.1717, { address: 'Carrer de Santa Anna 18–20', links: { website: 'https://www.tripadvisor.com/Hotel_Review-g187497-d232788-Reviews-Nouvel_Hotel-Barcelona_Catalonia.html' } }),
+    S('barcelona', '2026-10-08', '20:00', 'Dinner', 'food', null, null, { links: { website: 'https://share.google/41pCzKSTbWc0onOeh' } }),
+    S('barcelona', '2026-10-09', '', 'Cruise embarkation · Port of Barcelona', 'transit', 41.3580, 2.1705, { address: 'Moll Adossat cruise terminals' }),
+    S('marseille', '2026-10-10', '08:00', 'Ship in port 8 AM – 4 PM', 'transit', 43.3380, 5.3250, { address: 'Marseille Provence Cruise Terminal · on our own' }),
+    S('marseille', '2026-10-10', '', 'Bakery', 'food', null, null, { links: { website: 'https://share.google/yvxPjcYOMmQs1OFaL' } }),
+    S('marseille', '2026-10-10', '', 'Vieux-Port & Le Panier walk', 'outdoors', 43.2951, 5.3740, { address: 'Old Port', links: { website: 'https://findingjillian.com/an-easy-cruise-port-day-in-marseille/' } }),
+    S('florence', '2026-10-11', '08:15', 'Bus pickup · Livorno port', 'transit', 43.5540, 10.3000, { address: 'Florence on Your Own tour' }),
+    S('florence', '2026-10-11', '13:00', 'Skip-the-line Michelangelo · Accademia', 'sight', 43.7768, 11.2588, { address: 'Via Ricasoli 58–60', conf: 'Viator', links: { website: 'https://www.galleriaaccademiafirenze.it' } }),
+    S('florence', '2026-10-11', '14:30', 'Lunch · Pino\u2019s Sandwiches', 'food', 43.7709, 11.2613, { address: 'Via Giuseppe Verdi 36r' }),
+    S('florence', '2026-10-11', '16:30', 'Back on the bus', 'transit', null, null, { address: 'Approximate · same drop-off spot' }),
+    S('rome', '2026-10-12', '07:00', 'Ship in port 7 AM – 8 PM', 'transit', 42.0952, 11.7840, { address: 'Civitavecchia' }),
+    S('rome', '2026-10-12', '08:00', 'Fast train to Rome · Jeremiah guides', 'transit', 42.0938, 11.7958, { address: 'Civitavecchia station → Roma', cost: '$155 pp' }),
+    S('rome', '2026-10-12', '13:00', 'Lunch · Tonnarello', 'food', 41.8895, 12.4690, { address: 'Via della Paglia 1–3, Trastevere', links: { website: 'https://www.tonnarello.it' } }),
+    S('naples', '2026-10-13', '09:00', 'Breakfast', 'food', null, null, { links: { website: 'https://maps.apple/p/a1QQoeRm6Y9t2W' } }),
+    S('naples', '2026-10-13', '12:30', 'Lunch · L\u2019Antica Pizzeria da Michele', 'food', 40.8498, 14.2634, { address: 'Via Cesare Sersale 1 · the Eat, Pray, Love pizzeria', links: { website: 'https://maps.app.goo.gl/k9PV7EjL7quwsapb9' } }),
+    S('naples', '2026-10-13', '', 'Saved place', 'sight', null, null, { links: { website: 'https://maps.apple/p/QjF-fdhQn5TeEW' } }),
+    S('sea', '2026-10-14', '', 'Sea day', 'outdoors', null, null, {}),
+    S('malta', '2026-10-15', '07:00', 'Ship in port 7 AM – 4 PM', 'transit', 35.8925, 14.5085, { address: 'Valletta Cruise Port' }),
+    S('malta', '2026-10-15', '', 'Blue Lagoon boat tour · Comino', 'outdoors', 36.0147, 14.3243, { address: 'Viator · Cruise Liner Excursion', links: { reserve: 'https://www.viator.com/account/booking/1453393721/travel-companion-invitation?code=eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJlIjoiQlItMTQ1MzM5MzcyMSIsInQiOjE3OTEwNzM1NzMsInAiOiJUUkFWRUxfQ09NUEFOSU9OIn0.6W_sUhT2WNI15Z2OABsKfeQbl3E_uMrU7NwX_LvKx1ZSyQxwd8D_-AmpUw3ZPCw1WqF2lKUCZkhWPqZbJ9_HZw' } }),
+    S('sea', '2026-10-16', '', 'Sea day', 'outdoors', null, null, {}),
+    S('barcelona', '2026-10-17', '19:30', 'Anniversary dinner · Arcano', 'food', 41.3838, 2.1822, { address: 'Carrer dels Mirallers 3', links: { website: 'https://www.tripadvisor.com/Restaurant_Review-g187497-d986234-Reviews-Arcano_Restaurant_Barcelona-Barcelona_Catalonia.html' } }),
+    S('barcelona', '2026-10-18', '14:45', 'Sagrada Família tour', 'sight', 41.4036, 2.1744, { address: 'Carrer de Mallorca 401 · tour at 3:00, arrive 2:45', links: { website: 'https://sagradafamilia.org' } }),
+    S('barcelona', '2026-10-19', '09:30', 'Park Güell tour', 'outdoors', 41.4145, 2.1527, { address: 'Carrer d\u2019Olot', links: { website: 'https://parkguell.barcelona' } }),
+    S('barcelona', '2026-10-19', '', 'Churros', 'food', null, null, {}),
+    S('barcelona', '2026-10-19', '', 'Market', 'food', null, null, {}),
+    S('barcelona', '2026-10-20', '', 'Fly home · BCN', 'transit', 41.2974, 2.0833, { address: 'Aeroport Josep Tarradellas Barcelona–El Prat' }),
+  ],
+}];
+const CITY_INDEX = { barcelona: [41.3874, 2.1686], girona: [41.9794, 2.8214], sitges: [41.2371, 1.8059], madrid: [40.4168, -3.7038], seville: [37.3891, -5.9845], valencia: [39.4699, -0.3763], lisbon: [38.7223, -9.1393], porto: [41.1579, -8.6291], paris: [48.8566, 2.3522], marseille: [43.2965, 5.3698], rome: [41.9028, 12.4964], florence: [43.7696, 11.2558], naples: [40.8518, 14.2681], venice: [45.4408, 12.3155], malta: [35.8989, 14.5146], valletta: [35.8989, 14.5146], london: [51.5074, -0.1278], amsterdam: [52.3676, 4.9041], tokyo: [35.6762, 139.6503], kyoto: [35.0116, 135.7681], 'new york': [40.7128, -74.006], washington: [38.9072, -77.0369], 'cannon beach': [45.8918, -123.9615], newport: [44.6368, -124.0535], 'san diego': [32.7157, -117.1611], honolulu: [21.3069, -157.8583], 'mexico city': [19.4326, -99.1332], cancun: [21.1619, -86.8515], 'san juan': [18.4655, -66.1057], nashville: [36.1627, -86.7816], chicago: [41.8781, -87.6298], denver: [39.7392, -104.9903], orlando: [28.5383, -81.3792], boston: [42.3601, -71.0589], 'san francisco': [37.7749, -122.4194], seattle: [47.6062, -122.3321], dublin: [53.3498, -6.2603], edinburgh: [55.9533, -3.1883], athens: [37.9838, 23.7275], santorini: [36.3932, 25.4615] };
+
+// ---------- state ----------
+const KEY = 'doctravels.v4';
+let cache = null; try { cache = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+if (!cache || cache.v !== 4) cache = null;
+const db = { settings: { appearance: 'auto', mapType: 'satellite' }, ui: { view: 'dashboard' }, trips: [] };
+if (cache) { Object.assign(db.settings, cache.settings || {}); Object.assign(db.ui, cache.ui || {}); db.trips = cache.trips || []; }
+const auth = (cache && cache.auth) || { key: '', me: '' };
+const meta = (cache && cache.meta) || {};
+const dirty = new Set((cache && cache.dirty) || []);
+const dirtySeq = {};
+let MODE = 'cloud', setupError = '', lastSync = (cache && cache.lastSync) || 0, status = 'synced', loading = false;
+const ui = db.ui;
+const me = () => auth.me || MEMBERS[0].name;
+const canEdit = (t = T()) => !!t && roleOf(t, me()) === 'edit';
+const visibleTrips = () => db.trips.filter(t => roleOf(t, me()));
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify({ v: 4, settings: db.settings, ui, trips: db.trips, auth, meta, dirty: [...dirty], lastSync })); } catch (e) {} };
+const saveUi = persist;
+function save(tripId = ui.tripId) { persist(); if (tripId) { dirty.add(tripId); dirtySeq[tripId] = (dirtySeq[tripId] || 0) + 1; scheduleSync(); } }
+const T = () => db.trips.find(t => t.id === ui.tripId);
+const C = () => T().cities.find(c => c.id === ui.cityId) || T().cities[0];
+const cityEntries = () => T().entries.filter(e => e.cityId === C().id);
+const dayEntries = () => cityEntries().filter(e => e.date === ui.date).sort((a, b) => timeKey(a).localeCompare(timeKey(b)));
+const entryById = id => T().entries.find(e => e.id === id);
+
+function applyAppearance() {
+  const a = db.settings.appearance;
+  const dark = a === 'dark' || (a === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyAppearance);
+
+let toastTimer;
+function toast(msg) {
+  const el = $('#toast');
+  el.innerHTML = `<div class="glass glass-strong animate-rise rounded-full px-4 py-2.5 text-sm font-semibold text-zinc-900 dark:text-white">${esc(msg)}</div>`;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.innerHTML = ''; }, 2400);
+}
+
+// ---------- cloud sync (Netlify Functions + Netlify DB) ----------
+const API = 'api';
+const api = (method, path, body) => fetch(`${API}/${path}`, { method, headers: { 'content-type': 'application/json', 'x-doctravels-key': auth.key }, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+let syncTimer, syncing = false;
+function scheduleSync(ms = 700) { clearTimeout(syncTimer); syncTimer = setTimeout(sync, ms); }
+async function sync() {
+  if (MODE !== 'cloud' || syncing || !dirty.size || !auth.key) return;
+  syncing = true; setStatus('saving'); let denied = false;
+  try {
+    for (const id of [...dirty]) {
+      const trip = db.trips.find(t => t.id === id);
+      if (!trip) { dirty.delete(id); continue; }
+      const seq = dirtySeq[id] || 0;
+      let res = await api('PUT', `trips/${encodeURIComponent(id)}`, { data: trip, version: meta[id]?.version || 0, by: me() });
+      if (res.status === 409) {
+        const srv = await res.json();
+        if (srv.data) { const m = mergeTrip(trip, srv.data, meta[id]?.base); Object.assign(trip, m); }
+        res = await api('PUT', `trips/${encodeURIComponent(id)}`, { data: trip, version: srv.version || 0, by: me() });
+        rerender();
+      }
+      if (res.status === 401) { signOut('That passcode no longer works'); return; }
+      if (res.status === 403) { dirty.delete(id); delete meta[id]; denied = true; continue; }
+      if (!res.ok) throw new Error('save failed');
+      const { version } = await res.json();
+      meta[id] = { version, base: structuredClone(trip) };
+      if ((dirtySeq[id] || 0) === seq) dirty.delete(id);
+    }
+    lastSync = Date.now(); setStatus('synced');
+  } catch (e) { setStatus('offline'); }
+  finally { syncing = false; persist(); if (denied) { toast('This trip is view only for you — your change was undone'); refresh(); } if (dirty.size && navigator.onLine) scheduleSync(status === 'offline' ? 15000 : 500); }
+}
+async function refresh() {
+  if (MODE !== 'cloud' || !auth.key || syncing) return false;
+  let res;
+  try { res = await api('GET', 'trips'); } catch (e) { setStatus('offline'); return false; }
+  if (res.status === 401) { signOut('That passcode no longer works'); return false; }
+  if (!res.ok) { setStatus('offline'); return false; }
+  const { trips } = await res.json();
+  let changed = false; const seen = new Set();
+  trips.forEach(row => {
+    seen.add(row.id);
+    if (dirty.has(row.id)) return;
+    const local = db.trips.find(t => t.id === row.id);
+    if (!local) { db.trips.push(row.data); changed = true; }
+    else if ((meta[row.id]?.version || 0) !== row.version) { Object.assign(local, row.data); changed = true; }
+    else return;
+    meta[row.id] = { version: row.version, base: structuredClone(row.data) };
+  });
+  const before = db.trips.length; db.trips = db.trips.filter(t => seen.has(t.id) || dirty.has(t.id)); if (db.trips.length !== before) changed = true;
+  if (changed) { persist(); rerender(); }
+  lastSync = Date.now(); setStatus('synced');
+  return true;
+}
+// three-way merge: our edits since the last sync win for the fields we touched; everything else comes from the server
+function mergeTrip(local, server, base) {
+  base = base || server;
+  const out = { ...server };
+  ['name', 'start', 'end', 'travelers', 'access', 'cover'].forEach(k => { if (JSON.stringify(local[k]) !== JSON.stringify(base[k])) out[k] = local[k]; });
+  out.cities = mergeList(local.cities || [], server.cities || [], base.cities || [], (l, s, b) => ({ ...pickChanged(l, s, b, ['name', 'country', 'center', 'zoom']), dates: [...new Set([...(s.dates || []), ...(l.dates || [])])].sort() }));
+  out.entries = mergeList(local.entries || [], server.entries || [], base.entries || [], (l, s, b) => {
+    const m = pickChanged(l, s, b, ['name', 'cityId', 'date', 'time', 'cat', 'lat', 'lng', 'address', 'links', 'cost', 'conf', 'rating', 'by']);
+    const key = n => n.id || `${n.date}|${n.by}|${n.text}`; const seenN = new Set();
+    m.notes = [...(s.notes || []), ...(l.notes || [])].filter(n => { const k = key(n); if (seenN.has(k)) return false; seenN.add(k); return true; });
+    m.photos = [...new Set([...(s.photos || []), ...(l.photos || [])])];
+    return m;
+  });
+  return out;
+}
+function mergeList(L, Srv, B, mergeOne) {
+  const bIds = new Set(B.map(x => x.id)), sMap = new Map(Srv.map(x => [x.id, x])), out = [];
+  Srv.forEach(s => { const l = L.find(x => x.id === s.id); if (l) out.push(mergeOne(l, s, B.find(x => x.id === s.id) || s)); else if (!bIds.has(s.id)) out.push(s); });
+  L.forEach(l => { if (!sMap.has(l.id) && !bIds.has(l.id)) out.push(l); });
+  return out;
+}
+function pickChanged(l, s, b, keys) { const o = { ...s }; keys.forEach(k => { if (JSON.stringify(l[k]) !== JSON.stringify(b[k])) o[k] = l[k]; }); return o; }
+function rerender() {
+  if (ui.view === 'dashboard') { renderDash(); return; }
+  const t = T(); if (!t || !roleOf(t, me())) { closeTrip(); if (t) toast('This trip is now hidden from you'); return; }
+  const active = document.activeElement; if ($('.modal-panel') || (active && active.closest('#sheet form'))) return;
+  if (!t.cities.find(c => c.id === ui.cityId)) { ui.cityId = t.cities[0].id; ui.date = firstDate(); }
+  if (!C().dates.includes(ui.date)) ui.date = firstDate();
+  if (ui.selected && !entryById(ui.selected)) ui.selected = null;
+  renderHud(); renderSheet(false); if (!pinMode) renderControls(); if (map) updateMarkers();
+}
+function setStatus(s) {
+  status = s;
+  const when = lastSync ? ' · ' + new Date(lastSync).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+  const txt = MODE === 'local' ? 'Preview · saved on this device only' : s === 'saving' ? 'Saving…' : s === 'offline' ? 'Offline · changes are saved on this phone and will sync' : `Synced with the family${when}`;
+  $$('[data-sync]').forEach(el => el.textContent = txt);
+  $$('[data-sync-badge]').forEach(el => { el.textContent = s === 'offline' ? 'Offline' : 'Saving…'; el.classList.toggle('hidden', !(MODE === 'cloud' && s !== 'synced')); });
+}
+function seedIfEmpty() { if (MODE === 'cloud' && !db.trips.length) { db.trips = structuredClone(SEED_TRIPS); db.trips.forEach(t => save(t.id)); } }
+async function detectMode() {
+  try {
+    const r = await fetch(`${API}/trips`, { cache: 'no-store' });
+    const isJson = (r.headers.get('content-type') || '').includes('application/json');
+    if (!isJson) return 'local';
+    if (r.status === 500) { setupError = (await r.json()).error || 'The server is not configured yet.'; return 'cloud'; }
+    return r.status === 401 || r.status === 200 ? 'cloud' : 'local';
+  } catch (e) { return 'local'; }
+}
+function registerSW() { if (MODE === 'cloud' && !FRAME && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {}); }
+
+// ---------- gate ----------
+function openGate({ whoOnly = false } = {}) {
+  const g = $('#gate'); g.classList.remove('hidden');
+  g.innerHTML = `<form data-gate class="glass glass-strong animate-rise w-full max-w-sm rounded-[32px] p-6">
+    <div class="flex items-center gap-2.5"><span class="size-9 grid place-items-center rounded-xl bg-accent text-white">${ICON.pin}</span><span class="text-[22px] font-bold tracking-tight">DocTravels</span></div>
+    <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">${whoOnly ? 'Who is using this phone? Notes and ratings are signed with this name.' : 'The family trip planner. Enter the passcode once to set up this device.'}</p>
+    ${whoOnly ? '' : `<label class="mt-5 block"><span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Family passcode</span><input name="key" type="password" required autofocus autocomplete="current-password" class="mt-1 h-12 w-full rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 text-[15px] outline-none ring-accent/40 transition focus:ring-2"></label>`}
+    <div class="mt-4"><span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">I am</span>
+      <div class="mt-1.5 grid grid-cols-2 gap-2">${MEMBERS.map((m, i) => `<label class="flex h-12 cursor-pointer items-center gap-2.5 rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 ring-accent transition has-[:checked]:bg-accent/10 has-[:checked]:ring-2"><input type="radio" name="me" value="${esc(m.name)}" ${m.name === me() ? 'checked' : ''} class="sr-only">${avatar(m, i, 'size-7 text-[11px]')}<span class="text-sm font-medium">${esc(m.name)}</span></label>`).join('')}</div></div>
+    <p data-gate-err class="mt-3 ${setupError ? '' : 'hidden'} text-sm text-red-600 dark:text-red-400">${esc(setupError)}</p>
+    <button class="mt-5 h-12 w-full rounded-full bg-accent font-semibold text-white transition active:scale-[.985] disabled:opacity-60">Continue</button>
+  </form>`;
+}
+async function submitGate(form) {
+  const f = Object.fromEntries(new FormData(form).entries());
+  auth.me = f.me || me();
+  if (f.key !== undefined) {
+    const btn = form.querySelector('button'); btn.disabled = true; btn.textContent = 'Checking…';
+    const prev = auth.key; auth.key = f.key.trim();
+    let r = null; try { r = await api('GET', 'trips'); } catch (e) {}
+    if (!r || !r.ok) {
+      auth.key = prev; btn.disabled = false; btn.textContent = 'Continue';
+      let msg = 'That passcode didn\u2019t work.';
+      if (!r) msg = 'You\u2019re offline — connect once to set up this device.';
+      else if (r.status !== 401) { try { msg = (await r.json()).error || msg; } catch (e) {} }
+      const err = $('[data-gate-err]'); err.textContent = msg; err.classList.remove('hidden'); form.classList.add('animate-shake'); return;
+    }
+  }
+  persist(); $('#gate').classList.add('hidden'); $('#gate').innerHTML = '';
+  afterLogin();
+}
+async function afterLogin() {
+  loading = !db.trips.length; renderDash(); registerSW();
+  if (await refresh()) seedIfEmpty();
+  loading = false; renderDash();
+  if (ui.view === 'trip') restoreView();
+}
+function signOut(msg) {
+  auth.key = ''; persist(); closeModal();
+  if (ui.view === 'trip') closeTrip();
+  openGate(); if (msg) toast(msg);
+}
+setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); if (dirty.size) scheduleSync(100); } });
+addEventListener('online', () => { scheduleSync(100); refresh(); });
+addEventListener('offline', () => { if (MODE === 'cloud') setStatus('offline'); });
+
+// ---------- places: search & geocoding (OpenStreetMap via Photon) ----------
+async function photon(q, opts = {}) {
+  const u = new URL('https://photon.komoot.io/api/'); u.searchParams.set('q', q); u.searchParams.set('limit', opts.limit || 8); u.searchParams.set('lang', 'en');
+  if (opts.lat != null) { u.searchParams.set('lat', opts.lat); u.searchParams.set('lon', opts.lng); }
+  const r = await fetch(u); if (!r.ok) throw new Error('search failed');
+  return (await r.json()).features.map(placeFromFeature);
+}
+async function reverseGeocode(lat, lng) { try { const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&lang=en`); const f = (await r.json()).features[0]; return f ? placeFromFeature(f).address : ''; } catch (e) { return ''; } }
+function placeFromFeature(f) {
+  const p = f.properties, [lng, lat] = f.geometry.coordinates;
+  const street = p.street ? (p.housenumber ? `${p.street} ${p.housenumber}` : p.street) : '';
+  const locality = p.city || p.town || p.village || p.county || p.state || '';
+  return { name: p.name || street || locality, address: [street, locality].filter(Boolean).join(', '), country: p.country || '', lat, lng, cat: guessCat(p) };
+}
+function guessCat(p) {
+  const v = p.osm_value || '', k = p.osm_key || '';
+  if (/restaurant|cafe|bar|pub|fast_food|bakery|ice_cream|food|biergarten|marketplace|deli|winery/.test(v)) return 'food';
+  if (/hotel|hostel|guest_house|apartment|motel|chalet|resort/.test(v)) return 'stay';
+  if (k === 'railway' || k === 'aeroway' || k === 'public_transport' || /station|airport|ferry|bus_stop|port|terminal/.test(v)) return 'transit';
+  if (k === 'leisure' || k === 'natural' || /park|beach|garden|viewpoint|peak|bay|lagoon|island|trail/.test(v)) return 'outdoors';
+  return 'sight';
+}
+function linkLabel(url, fallback) {
+  try { const h = new URL(url).hostname.replace(/^www\./, ''); if (/tripadvisor/.test(h)) return 'TripAdvisor'; if (/yelp/.test(h)) return 'Yelp'; if (/viator/.test(h)) return 'Viator'; if (/share\.google|goo\.gl|google\./.test(h)) return 'Google Maps'; if (/maps\.apple|apple\.com/.test(h)) return 'Apple Maps'; if (/opentable|resy|thefork/.test(h)) return 'Reserve'; } catch (e) {}
+  return fallback;
+}
+
+// ---------- dashboard ----------
+const avatar = (m, i, cls = 'size-7 text-[11px]', ring = 'ring-white dark:ring-zinc-800') => `<span class="${cls} grid place-items-center rounded-full font-semibold ring-2 ${ring} ${m.name === me() ? 'bg-accent text-white' : 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100'}">${m.initial}</span>`;
+// who's on a trip, as an overlapping stack; past 4 people the tail collapses to +N
+const stack = (t, cls = 'size-6 text-[10px]', ring = 'ring-white dark:ring-zinc-900', gap = '-space-x-1.5') => { const ms = peopleOf(t), show = ms.length > 4 ? ms.slice(0, 3) : ms, more = ms.length - show.length; return `<span class="flex shrink-0 ${gap}">${show.map((m, i) => avatar(m, i, cls + (roleOf(t, m.name) === 'view' ? ' opacity-60' : ''), ring)).join('')}${more ? `<span class="${cls} grid place-items-center rounded-full font-semibold ring-2 ${ring} bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200">+${more}</span>` : ''}</span>`; };
+const tripStats = t => { const places = t.entries.length, notes = t.entries.reduce((n, e) => n + (e.notes || []).length, 0); return `${canEdit(t) ? '' : 'View only · '}${t.cities.length} ${t.cities.length === 1 ? 'city' : 'cities'} · ${places} places · ${notes} notes`; };
+const cover = (t, cls) => { const src = coverOf(t); return `<div class="${cls} relative overflow-hidden ${src ? 'bg-zinc-200 dark:bg-zinc-800' : 'stripes bg-accent-deep'}">${src ? `<img src="${esc(src)}" alt="" class="absolute inset-0 size-full object-cover">` : `<span class="absolute -bottom-3 -right-1 text-[96px] font-semibold leading-none text-white/15">${esc((t.name || '?')[0])}</span>`}</div>`; };
+
+function renderDash() {
+  const now = new Date();
+  const mine = visibleTrips();
+  const upcoming = mine.filter(t => new Date(t.end + 'T23:59') >= now).sort((a, b) => a.start.localeCompare(b.start));
+  const past = mine.filter(t => !upcoming.includes(t)).sort((a, b) => b.start.localeCompare(a.start));
+  const next = upcoming[0];
+  const countdown = t => { const d = daysUntil(t.start); return d > 1 ? `In ${d} days` : d === 1 ? 'Tomorrow' : d === 0 ? 'Starts today' : 'Happening now'; };
+  const card = (t, i) => `
+    <button data-open="${t.id}" class="glass animate-rise flex w-full items-center gap-3.5 rounded-[24px] p-2.5 pr-4 text-left transition active:scale-[.985]" style="animation-delay:${160 + i * 60}ms">
+      ${cover(t, 'size-[60px] shrink-0 rounded-[18px]')}
+      <span class="min-w-0 flex-1"><span class="block truncate text-[16px] font-semibold">${esc(t.name)}</span><span class="block text-[13px] text-zinc-500 dark:text-zinc-400">${rangeLabel(t.start, t.end)}</span><span class="mt-1 flex items-center gap-2">${stack(t, 'size-5 text-[9px]', 'ring-white dark:ring-zinc-800', '-space-x-1')}<span class="truncate text-xs text-zinc-400 dark:text-zinc-500">${tripStats(t)}</span></span></span>
+      <span class="rotate-[-90deg] text-zinc-400 dark:text-zinc-500">${ICON.chevron}</span>
+    </button>`;
+  $('#dash').innerHTML = `
+  <div class="mx-auto max-w-2xl px-4 pb-16" style="padding-top:calc(var(--sat) + 14px)">
+    <header class="animate-fade flex items-center justify-between pl-1">
+      <div class="flex items-center gap-2.5"><span class="size-8 grid place-items-center rounded-[10px] bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,.35)]">${ICON.pin}</span><span class="text-[19px] font-bold tracking-tight">DocTravels</span></div>
+      <button data-act="account" class="glass flex items-center -space-x-2 rounded-full p-1 transition active:scale-95">${MEMBERS.map((m, i) => avatar(m, i, 'size-7 text-[11px]', 'ring-white dark:ring-zinc-800')).join('')}</button>
+    </header>
+    ${next ? `
+    <button data-open="${next.id}" class="animate-rise relative mt-5 block w-full overflow-hidden rounded-[32px] text-left shadow-[0_30px_60px_-24px_rgba(0,0,0,.45)] transition active:scale-[.99]" style="animation-delay:60ms">
+      ${cover(next, 'h-[420px]')}
+      <span class="glass glass-strong absolute inset-x-2.5 bottom-2.5 block rounded-[26px] p-4">
+        <span class="flex items-start justify-between gap-3">
+          <span class="min-w-0"><span class="block text-[11px] font-bold uppercase tracking-wider text-accent">${countdown(next)}</span><span class="mt-0.5 block truncate text-[26px] font-bold leading-tight tracking-tight">${esc(next.name)}</span><span class="mt-1 block text-[15px] text-zinc-500 dark:text-zinc-400">${rangeLabel(next.start, next.end)}</span></span>
+          <span class="mt-1 inline-flex h-10 shrink-0 items-center rounded-full bg-zinc-900 px-4 text-[15px] font-semibold text-white dark:bg-white dark:text-zinc-900">Open</span>
+        </span>
+        <span class="mt-3.5 flex flex-wrap gap-1.5">${next.cities.map(c => `<span class="rounded-full bg-black/[.06] dark:bg-white/10 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-200">${esc(c.name)}</span>`).join('')}</span>
+        <span class="mt-3.5 flex items-center justify-between gap-3"><span class="text-xs text-zinc-500 dark:text-zinc-400">${tripStats(next)}</span>${stack(next, 'size-6 text-[10px]', 'ring-white dark:ring-zinc-800')}</span>
+      </span>
+    </button>` : loading ? `<div class="glass animate-fade mt-5 grid h-64 place-items-center rounded-[32px] text-sm text-zinc-500">Loading your trips…</div>` : ''}
+    <button data-act="newtrip" class="glass animate-rise mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full text-[15px] font-medium text-zinc-800 dark:text-zinc-100 transition active:scale-[.985]" style="animation-delay:120ms">${ICON.plus.replace('size-6', 'size-[18px]')} Start a trip</button>
+    ${upcoming.length > 1 ? `<h2 class="animate-fade mt-8 mb-3 pl-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Upcoming</h2><div class="flex flex-col gap-2.5">${upcoming.slice(1).map(card).join('')}</div>` : ''}
+    ${past.length ? `<h2 class="animate-fade mt-8 mb-3 pl-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Past trips</h2><div class="flex flex-col gap-2.5">${past.map(card).join('')}</div>` : ''}
+    <p data-sync class="mt-10 text-center text-xs text-zinc-400 dark:text-zinc-500"></p>
+  </div>`;
+  setStatus(status);
+}
+
+// ---------- map ----------
+let map, layers = [], markers = {}, detent = 'half', pinMode = false, pinReturn = null, meMarker, meRing, geoWatch;
+const DETENTS = { peek: .4, half: .76, full: 1 };
+const hudBottom = () => { const r = $('#hud').getBoundingClientRect(); return r.height ? r.bottom : (FRAME ? 54 : 0) + 12 + 44; };
+function initMap() {
+  if (map) return;
+  map = L.map('map', { zoomControl: false, attributionControl: false, zoomSnap: .5 }).setView(C().center, C().zoom || 13);
+  setTiles();
+  map.on('click', () => { if (ui.selected && !pinMode) selectEntry(null); });
+}
+function setTiles() {
+  layers.forEach(l => l.remove()); layers = [];
+  if (db.settings.mapType === 'satellite') {
+    layers.push(L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map));
+    layers.push(L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 17, opacity: .95 }).addTo(map));
+    $('#attrib').textContent = 'Imagery © Esri, Maxar, Earthstar Geographics';
+  } else {
+    layers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map));
+    $('#attrib').textContent = '© OpenStreetMap contributors';
+  }
+}
+function pinHtml(n, mode, i) {
+  if (mode === 'selected') return `<div class="relative size-10 grid place-items-center"><div class="absolute inset-0 rounded-full bg-accent/50 animate-ring"></div><div class="relative size-9 grid place-items-center rounded-full bg-accent text-white text-sm font-semibold ring-4 ring-white dark:ring-zinc-900 shadow-xl animate-pop">${n}</div></div>`;
+  if (mode === 'active') return `<div class="size-8 grid place-items-center rounded-full bg-accent text-white text-xs font-semibold ring-2 ring-white shadow-lg animate-pop" style="animation-delay:${i * 45}ms">${n}</div>`;
+  return `<div class="size-5 grid place-items-center rounded-full bg-white/95 dark:bg-zinc-800/95 ring-1 ring-black/10 shadow animate-fade"><div class="size-2 rounded-full bg-zinc-500 dark:bg-zinc-300"></div></div>`;
+}
+function updateMarkers() {
+  Object.values(markers).forEach(m => m.remove()); markers = {};
+  const day = dayEntries().filter(pinned);
+  cityEntries().filter(pinned).forEach(e => {
+    const idx = day.indexOf(e);
+    const mode = e.id === ui.selected ? 'selected' : idx >= 0 ? 'active' : 'muted';
+    const size = mode === 'selected' ? 40 : mode === 'active' ? 32 : 20;
+    const icon = L.divIcon({ html: pinHtml(idx + 1, mode, idx), className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+    const m = L.marker([e.lat, e.lng], { icon, zIndexOffset: mode === 'selected' ? 1000 : mode === 'active' ? 500 : 0, title: e.name }).addTo(map);
+    m.on('click', () => selectEntry(e.id, { fromMap: true }));
+    markers[e.id] = m;
+  });
+}
+const mapVis = () => isDesktop() ? 0 : Math.min(visOf(detent), innerHeight - hudBottom() - 140);
+function fitTo(entries, animate = true) {
+  if (!map) return;
+  entries = entries.filter(pinned);
+  const vis = mapVis();
+  const opts = { paddingTopLeft: [24, hudBottom() + 16], paddingBottomRight: [24, vis + 24], maxZoom: 16, animate, duration: .9 };
+  if (!entries.length) { map.flyTo(C().center, C().zoom || 13, { duration: .9 }); return; }
+  map.fitBounds(L.latLngBounds(entries.map(e => [e.lat, e.lng])).pad(.1), opts);
+}
+function locateMe() {
+  if (!navigator.geolocation) { toast('Location isn\u2019t available on this device'); return; }
+  const show = pos => {
+    const { latitude, longitude, accuracy } = pos.coords; const ll = [latitude, longitude];
+    if (!meMarker) { meRing = L.circle(ll, { radius: accuracy, color: '#2563eb', weight: 1, opacity: .4, fillColor: '#2563eb', fillOpacity: .1 }).addTo(map); meMarker = L.circleMarker(ll, { radius: 7, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }).addTo(map); }
+    else { meRing.setLatLng(ll).setRadius(accuracy); meMarker.setLatLng(ll); }
+  };
+  toast('Finding you…');
+  navigator.geolocation.getCurrentPosition(pos => {
+    show(pos); map.flyTo([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 16), { duration: .9 });
+    if (!geoWatch) geoWatch = navigator.geolocation.watchPosition(show, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
+    renderTabbar();
+  }, err => toast(err.code === 1 ? 'Allow location access in Settings to use this' : 'Couldn\u2019t get your location'), { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+}
+function stopLocating() { if (geoWatch) { navigator.geolocation.clearWatch(geoWatch); geoWatch = null; } if (meMarker) { meMarker.remove(); meRing.remove(); meMarker = meRing = null; } }
+
+// ---------- trip view ----------
+function openTrip(id, restore = false) {
+  ui.view = 'trip'; ui.tripId = id;
+  const t = T(); if (!t || !roleOf(t, me())) { ui.view = 'dashboard'; return; }
+  if (!restore || !t.cities.find(c => c.id === ui.cityId)) { ui.cityId = t.cities[0].id; ui.date = firstDate(); ui.selected = null; }
+  if (ui.selected && !entryById(ui.selected)) ui.selected = null;
+  saveUi();
+  const trip = $('#trip'), dash = $('#dash');
+  dash.classList.add('hidden');
+  trip.classList.remove('hidden'); trip.classList.add('animate-fade');
+  initMap(); tab = 'itinerary';
+  renderHud(); renderSheet(true); renderControls();
+  const sheet = $('#sheet');
+  if (!isDesktop()) { sheet.style.transition = 'none'; sheet.style.transform = `translateY(${innerHeight}px)`; }
+  requestAnimationFrame(() => { map.invalidateSize(); sheet.style.transition = ''; detent = 'half'; layoutSheet(); fitTo(dayEntries(), !restore); updateMarkers(); });
+}
+function closeTrip() {
+  const trip = $('#trip');
+  trip.classList.add('transition-opacity', 'duration-300', 'opacity-0');
+  setTimeout(() => { trip.classList.add('hidden'); trip.classList.remove('opacity-0', 'transition-opacity', 'duration-300', 'animate-fade'); }, 300);
+  ui.view = 'dashboard'; ui.selected = null; saveUi(); stopLocating();
+  renderDash(); $('#dash').classList.remove('hidden');
+}
+function restoreView() { if (ui.view === 'trip' && db.trips.find(t => t.id === ui.tripId)) openTrip(ui.tripId, true); else ui.view = 'dashboard'; }
+function firstDate() { const c = C(); const withEntries = c.dates.find(d => T().entries.some(e => e.cityId === c.id && e.date === d)); return withEntries || c.dates[0]; }
+function setCity(id) { if (ui.cityId === id) return; ui.cityId = id; ui.date = firstDate(); ui.selected = null; saveUi(); renderHud(); renderSheet(true); updateMarkers(); fitTo(dayEntries()); }
+function setDate(d) { if (ui.date === d) return; ui.date = d; ui.selected = null; saveUi(); renderSheet(true); updateMarkers(); fitTo(dayEntries()); }
+
+function renderHud() {
+  const t = T();
+  $('#hud').innerHTML = `
+  <div class="flex items-center gap-2">
+    <button data-act="back" class="glass lg:hidden size-11 shrink-0 grid place-items-center rounded-full text-zinc-800 dark:text-zinc-100 transition active:scale-95">${ICON.back}</button>
+    <div class="glass min-w-0 rounded-full p-1"><div class="flex gap-1 overflow-x-auto no-scrollbar rounded-full">
+      ${t.cities.map(c => `<button data-city="${c.id}" class="h-9 shrink-0 rounded-full px-4 text-[14px] font-medium transition-all duration-300 ${c.id === C().id ? 'bg-zinc-900 text-white shadow-[0_2px_8px_rgba(0,0,0,.25)] dark:bg-white dark:text-zinc-900' : 'text-zinc-900 dark:text-zinc-100'}">${esc(c.name)}</button>`).join('')}
+    </div></div>
+    <button data-act="trip" title="${canEdit() ? 'Edit trip' : 'Trip details'}" class="glass ml-auto flex h-11 shrink-0 items-center gap-1 rounded-full pl-1.5 pr-2 transition active:scale-95">${stack(t, 'size-7 text-[10px]', 'ring-white dark:ring-zinc-800', '-space-x-2.5')}<span class="text-zinc-400">${ICON.chevron}</span></button>
+  </div>`;
+}
+function renderControls() {
+  $('#mapctl').innerHTML = `
+    <button data-act="layers" title="Map style" class="glass size-11 grid place-items-center rounded-full text-zinc-900 dark:text-zinc-100 transition active:scale-95">${ICON.layers}</button>
+    ${canEdit() ? `<button data-act="add" title="Add a place" class="size-14 grid place-items-center rounded-full bg-accent text-white shadow-[0_12px_32px_-6px_rgba(15,118,110,.7),inset_0_1px_0_rgba(255,255,255,.35)] transition hover:bg-accent-deep active:scale-95">${ICON.plus}</button>` : ''}`;
+  renderTabbar();
+}
+const dayChip = d => { const n = cityEntries().filter(e => e.date === d).length, on = d === ui.date; return `<button data-date="${d}" class="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-all duration-300 active:scale-95 ${on ? 'bg-accent text-white shadow-[0_8px_20px_-8px_rgba(15,118,110,.7)]' : 'bg-black/[.06] text-zinc-900 dark:bg-white/[.1] dark:text-zinc-100'}"><span class="${on ? 'text-white/85' : 'text-zinc-700 dark:text-zinc-300'}">${fmtDate(d, {weekday:'short'})}</span><span class="font-semibold">${fmtDate(d, {day:'numeric'})}</span>${n ? `<span class="size-1.5 rounded-full ${on ? 'bg-white/80' : 'bg-accent'}"></span>` : ''}</button>`; };
+
+function renderSheet(anim = false) {
+  const t = T(), c = C(), entries = dayEntries(), n = entries.length;
+  const list = $('#sheet .list'); const scroll = list ? list.scrollTop : 0;
+  $('#sheet').innerHTML = `
+    <div class="hidden lg:flex shrink-0 items-center gap-3 pb-1" style="padding-top:calc(var(--sat) + 20px)">
+      <button data-act="back" class="glass size-10 grid place-items-center rounded-full transition active:scale-95">${ICON.back}</button>
+      <div class="min-w-0"><h1 class="truncate text-[22px] font-bold tracking-tight">${esc(t.name)}</h1><p class="text-sm text-zinc-500 dark:text-zinc-400">${rangeLabel(t.start, t.end)}</p></div>
+    </div>
+    <div class="glass shrink-0 rounded-[28px] pb-3 lg:pt-3">
+      <div data-handle class="cursor-grab touch-none px-5 pt-1.5 lg:cursor-default">
+        <div class="lg:hidden flex justify-center pb-2"><div class="h-1.5 w-10 rounded-full bg-black/15 dark:bg-white/20"></div></div>
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0"><h2 class="truncate text-[22px] font-bold leading-tight tracking-tight">${esc(c.name)}</h2><p class="mt-0.5 text-[14px] text-zinc-700 dark:text-zinc-300">${c.country ? esc(c.country) + ' · ' : ''}${fmtDate(ui.date, {weekday:'long', month:'short', day:'numeric'})} · ${n} ${n === 1 ? 'place' : 'places'}</p></div>
+          <div class="flex shrink-0 items-center gap-1.5 pt-1.5">${canEdit() ? '' : '<span class="rounded-full bg-black/[.06] dark:bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">View only</span>'}<span data-sync-badge class="hidden rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400"></span></div>
+        </div>
+      </div>
+      <div class="mt-2.5 flex gap-2 overflow-x-auto no-scrollbar px-5">${c.dates.map(dayChip).join('')}</div>
+    </div>
+    <div class="glass glass-strong flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] transition-opacity duration-300">
+      <div class="list flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 py-2.5">
+        ${entries.length ? entries.map((e, i) => tileHtml(e, i, e.id === ui.selected, anim)).join('') : `<div class="animate-fade my-auto flex flex-col items-center px-4 py-8 text-center"><span class="size-12 grid place-items-center rounded-full bg-accent/10 text-accent">${ICON.pin}</span><p class="mt-3 text-[16px] font-semibold">Nothing planned for ${fmtDate(ui.date, {weekday:'long'})} yet</p>${canEdit() ? `<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Add a place and it shows up here and on the map.</p><button data-act="add" class="mt-4 h-11 rounded-full bg-accent px-5 text-[15px] font-semibold text-white transition active:scale-95">Add a place</button>` : ''}</div>`}
+      </div>
+    </div>`;
+  const nl = $('#sheet .list'); if (nl && !anim) nl.scrollTop = scroll;
+  setStatus(status);
+}
+function tileHtml(e, i, open, anim) {
+  const thumb = (e.photos || []).length ? `<span class="relative size-10 shrink-0 overflow-hidden rounded-xl bg-black/[.05] dark:bg-white/[.08]"><img src="${esc(e.photos[e.photos.length - 1])}" loading="lazy" alt="" class="absolute inset-0 size-full object-cover">${e.photos.length > 1 ? `<span class="absolute bottom-0 right-0 rounded-tl-md bg-black/60 px-1 text-[9px] font-semibold leading-[14px] text-white">${e.photos.length}</span>` : ''}</span>` : '';
+  return `<article data-id="${e.id}" class="tile relative rounded-[22px] transition-colors duration-300 ${open ? 'bg-black/[.045] dark:bg-white/[.07]' : ''} ${anim ? 'animate-rise' : ''}" style="animation-delay:${i * 45}ms">
+    <button data-act="toggle" class="flex min-h-[60px] w-full items-center gap-3 px-3 py-2.5 text-left">
+      <span class="relative z-10 grid w-6 shrink-0 place-items-center"><span class="size-3 rounded-full ring-[3px] ring-white/90 dark:ring-zinc-900/90 ${pinned(e) ? CATS[e.cat].dot : 'bg-zinc-400/70'}"></span></span>
+      <span class="min-w-0 flex-1"><span class="block truncate text-[16px] font-semibold leading-tight">${esc(e.name)}</span><span class="mt-0.5 block truncate text-[13px] text-zinc-500 dark:text-zinc-400">${CATS[e.cat].label}${e.address ? ' · ' + esc(e.address) : ''}</span></span>
+      ${thumb}
+      <span class="shrink-0 text-[14px] font-medium tabular-nums ${e.time ? 'text-zinc-600 dark:text-zinc-300' : 'text-zinc-400 dark:text-zinc-500'}">${fmtTime(e.time)}</span>
+    </button>
+    <div class="details grid transition-[grid-template-rows,opacity] duration-300 ease-out ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}"><div class="min-h-0 overflow-hidden"><div class="flex flex-col gap-4 px-4 pb-4 pt-0.5">${detailsHtml(e)}</div></div></div>
+  </article>`;
+}
+function detailsHtml(e) {
+  const L_ = e.links || {};
+  const links = [];
+  if (L_.website) links.push([linkLabel(L_.website, 'Website'), L_.website]);
+  if (L_.yelp) links.push(['Yelp', L_.yelp]);
+  if (pinned(e)) {
+    const isApple = /iPhone|iPad|Macintosh/.test(navigator.userAgent);
+    links.push(['Directions', isApple ? `https://maps.apple.com/?daddr=${e.lat},${e.lng}&q=${encodeURIComponent(e.name)}&dirflg=w` : `https://www.google.com/maps/dir/?api=1&destination=${e.lat},${e.lng}&travelmode=walking`]);
+  }
+  if (L_.reserve) links.push([linkLabel(L_.reserve, 'Reservation'), L_.reserve]);
+  if (L_.phone) links.push(['Call', 'tel:' + L_.phone.replace(/\s/g, '')]);
+  if (L_.instagram) links.push(['Instagram', 'https://instagram.com/' + L_.instagram.replace('@', '')]);
+  const fact = (k, v) => `<div class="min-w-0"><div class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">${k}</div><div class="truncate text-sm font-medium mt-0.5">${esc(v)}</div></div>`;
+  const ed = canEdit();
+  const stars = [1, 2, 3, 4, 5].map(n => ed ? `<button data-rate="${n}" class="text-lg leading-none transition active:scale-125 ${n <= e.rating ? 'text-accent' : 'text-zinc-300 dark:text-zinc-600 hover:text-accent/60'}">★</button>` : `<span class="text-lg leading-none ${n <= e.rating ? 'text-accent' : 'text-zinc-300 dark:text-zinc-600'}">★</span>`).join('');
+  const photos = (e.photos || []).map(p => `<button type="button" data-view-photo="${esc(p)}" class="shrink-0 transition active:scale-95"><img src="${esc(p)}" loading="lazy" class="size-20 rounded-xl object-cover ring-1 ring-black/5" alt=""></button>`).join('');
+  const notes = (e.notes || []).slice().sort((a, b) => b.date.localeCompare(a.date)).map(n => `<li class="rounded-2xl bg-black/[.04] dark:bg-white/[.06] px-3 py-2"><div class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">${fmtDate(n.date, {month:'short', day:'numeric', year:'numeric'})} · ${esc(n.by)}</div><p class="mt-0.5 text-sm leading-snug">${esc(n.text)}</p></li>`).join('');
+  return `
+    <div class="flex flex-wrap gap-2">${links.map(([l, h]) => `<a href="${esc(h)}" target="_blank" rel="noopener" class="inline-flex h-8 items-center gap-1 rounded-full bg-black/[.05] dark:bg-white/[.08] px-3 text-[13px] font-medium text-zinc-800 dark:text-zinc-100 transition hover:bg-accent/10 hover:text-accent active:scale-95">${l}<span class="text-zinc-400">↗</span></a>`).join('')}${pinned(e) || !ed ? '' : `<button data-act="setpin" class="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-accent/60 px-3 text-[13px] font-medium text-accent transition hover:bg-accent/10 active:scale-95">${ICON.pinSm}Set location</button>`}</div>
+    <div class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">${e.cost ? fact('Cost', e.cost) : ''}${e.conf ? fact('Confirmation', e.conf) : ''}<div><div class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Our rating</div><div class="mt-0.5 flex gap-0.5">${stars}</div></div></div>
+    ${photos || ed ? `<div class="-mx-4 flex gap-2 overflow-x-auto no-scrollbar px-4">${photos}${ed ? `<label class="flex size-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-[11px] font-medium text-zinc-500 transition hover:border-accent hover:text-accent"><span class="text-xl leading-none">+</span>Photo<input type="file" accept="image/*" multiple data-photo class="hidden"></label>` : ''}</div>` : ''}
+    <div><div class="flex items-baseline justify-between"><h4 class="text-sm font-semibold">Notes</h4><span class="text-xs text-zinc-400">${(e.notes || []).length ? e.notes.length + ' over time' : 'none yet'}</span></div>
+      ${notes ? `<ul class="mt-2 flex flex-col gap-2">${notes}</ul>` : ''}
+      ${ed ? `<form data-note class="mt-2 flex gap-2"><input name="text" autocomplete="off" placeholder="Add a thought…" class="h-10 min-w-0 flex-1 rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 text-sm outline-none ring-accent/40 transition focus:ring-2"><button class="h-10 rounded-full bg-accent px-3.5 text-sm font-medium text-white transition active:scale-95">Add</button></form>` : ''}</div>
+    <div class="flex items-center justify-between text-[13px]"><span class="text-zinc-400">Added by ${esc(e.by)}</span>${ed ? `<div class="flex gap-4"><button data-act="edit" class="font-medium text-accent">Edit</button><button data-act="delete" class="font-medium text-red-600 dark:text-red-400">Remove</button></div>` : ''}</div>`;
+}
+
+function selectEntry(id, { fromMap = false } = {}) {
+  if (id && id === ui.selected) id = null;
+  const prev = ui.selected; ui.selected = id; saveUi();
+  if (id) {
+    const e = entryById(id);
+    if (e.cityId !== ui.cityId || e.date !== ui.date) { ui.cityId = e.cityId; ui.date = e.date; renderHud(); renderSheet(true); }
+  }
+  const sheet = $('#sheet');
+  [prev, id].forEach(x => { if (!x) return; const tile = sheet.querySelector(`.tile[data-id="${x}"]`); if (tile) setTileOpen(tile, x === id); });
+  updateMarkers();
+  if (id) {
+    const e = entryById(id);
+    if (!isDesktop() && detent !== 'full') { detent = 'full'; layoutSheet(); }
+    const list = $('#sheet .list'), tile = sheet.querySelector(`.tile[data-id="${id}"]`);
+    if (list && tile) setTimeout(() => list.scrollTo({ top: tile.offsetTop - 8, behavior: 'smooth' }), 60);
+    if (pinned(e)) { const vis = mapVis(); map.fitBounds(L.latLngBounds([[e.lat, e.lng]]), { paddingTopLeft: [0, hudBottom() + 16], paddingBottomRight: [0, vis], maxZoom: Math.max(map.getZoom(), 15.5), animate: true, duration: .7 }); }
+  }
+}
+function setTileOpen(tile, open) {
+  tile.classList.toggle('bg-black/[.045]', open); tile.classList.toggle('dark:bg-white/[.07]', open);
+  const d = tile.querySelector('.details'); d.classList.toggle('grid-rows-[1fr]', open); d.classList.toggle('opacity-100', open); d.classList.toggle('grid-rows-[0fr]', !open); d.classList.toggle('opacity-0', !open);
+}
+
+// ---------- bottom sheet: two floating glass cards over the map ----------
+const SHEET_H = () => Math.round(innerHeight - hudBottom() - 10);
+const sabPx = () => parseFloat(getComputedStyle($('#toast')).bottom) - 90 || 0;
+const visOf = d => { if (d === 'peek') { const head = $('#sheet > .glass'); return Math.round((head ? head.offsetHeight : 150) + sabPx() + 92); } return Math.round(DETENTS[d] * SHEET_H()); };
+// the cards always end just above the tab bar: the sheet's bottom padding grows by however far it is translated off-screen
+function placeSheet(sheet, H, vis) {
+  const sab = sabPx(), head = $('#sheet > .glass'), list = $('#sheet > .glass:last-child');
+  sheet.style.transform = `translateY(${H - vis}px)`; sheet.style.paddingBottom = (H - vis) + sab + 88 + 'px';
+  if (head && list && head !== list) list.style.opacity = vis - sab - 88 - head.offsetHeight - 10 < 48 ? '0' : '1';
+  positionControls(vis);
+}
+function layoutSheet() {
+  const sheet = $('#sheet');
+  if (isDesktop()) { sheet.style.transform = ''; sheet.style.height = ''; sheet.style.paddingBottom = 'calc(var(--sab) + 88px)'; const list = $('#sheet > .glass:last-child'); if (list) list.style.opacity = ''; positionControls(0); return; }
+  const H = SHEET_H();
+  sheet.style.height = H + 'px';
+  placeSheet(sheet, H, visOf(detent));
+}
+function positionControls(vis) {
+  const ctl = $('#mapctl'), hide = !isDesktop() && vis >= SHEET_H() - 72;
+  ctl.style.bottom = (isDesktop() ? 24 : vis + 12) + 'px'; ctl.style.opacity = hide ? '0' : '1'; ctl.style.pointerEvents = hide ? 'none' : '';
+  $('#attrib').style.bottom = (isDesktop() ? 4 : vis + 4) + 'px'; $('#attrib').style.opacity = hide ? '0' : '1';
+}
+(function enableDrag() {
+  let startY = 0, startTy = 0, dragging = false; const sheet = $('#sheet');
+  sheet.addEventListener('pointerdown', ev => {
+    if (isDesktop() || !ev.target.closest('[data-handle]')) return;
+    dragging = true; startY = ev.clientY; startTy = SHEET_H() - visOf(detent);
+    sheet.style.transition = 'none'; sheet.setPointerCapture(ev.pointerId);
+  });
+  sheet.addEventListener('pointermove', ev => {
+    if (!dragging) return;
+    const H = SHEET_H(), ty = Math.max(0, Math.min(H - 150, startTy + (ev.clientY - startY)));
+    placeSheet(sheet, H, H - ty);
+  });
+  const end = ev => {
+    if (!dragging) return; dragging = false; sheet.style.transition = '';
+    const dy = ev.clientY - startY;
+    const order = ['peek', 'half', 'full'];
+    let i = order.indexOf(detent);
+    if (Math.abs(dy) < 10) i = (i + 1) % 3; else if (dy < -40) i = Math.min(2, i + 1); else if (dy > 40) i = Math.max(0, i - 1);
+    detent = order[i]; layoutSheet();
+  };
+  sheet.addEventListener('pointerup', end); sheet.addEventListener('pointercancel', end);
+})();
+
+// ---------- floating tab bar (trip view): Trips · Itinerary · Photos · Locate ----------
+const TABS = [['home', 'Trips', ICON.home], ['itinerary', 'Itinerary', ICON.route], ['photos', 'Photos', ICON.photo], ['locate', 'Locate', ICON.locate]];
+let tab = 'itinerary';
+function renderTabbar() {
+  const bar = $('#tabbar'); if (!bar || !T()) return;
+  const n = tripPhotos().length, i = Math.max(0, TABS.findIndex(x => x[0] === tab));
+  bar.innerHTML = `<div class="glass relative grid grid-cols-4 rounded-full p-1.5">
+    <div class="lens absolute inset-y-1.5 rounded-full transition-[left] duration-500 ease-[cubic-bezier(.2,.8,.2,1)]" style="width:calc((100% - 12px) / 4);left:calc(6px + ${i} * (100% - 12px) / 4)"></div>
+    ${TABS.map(([id, label, icon]) => { const on = id === tab, live = id === 'locate' && !!geoWatch; return `<button data-tab="${id}" class="relative z-10 flex h-[54px] flex-col items-center justify-center gap-0.5 rounded-full text-[11px] font-medium transition active:scale-95 ${live ? 'text-accent' : on ? 'text-zinc-900 dark:text-white' : 'text-zinc-700 dark:text-zinc-300'}">${icon.replace('size-5', 'size-6')}<span>${label}</span>${id === 'photos' && n ? `<span class="absolute left-1/2 top-1.5 ml-1.5 min-w-[18px] rounded-full bg-accent px-1 text-center text-[10px] font-bold leading-[18px] text-white">${n}</span>` : ''}</button>`; }).join('')}
+  </div>`;
+}
+function onTab(id) {
+  if (id === 'home') { closeModal(); closeTrip(); return; }
+  if (id === 'photos') { if (tab !== 'photos') openGallery(); return; }
+  if (id === 'locate') { if (geoWatch) { stopLocating(); renderTabbar(); toast('Stopped following you'); } else locateMe(); return; }
+  if ($('.modal-panel')) { closeModal(); return; }
+  if (!isDesktop()) { detent = detent === 'half' ? 'full' : 'half'; layoutSheet(); }
+}
+
+// ---------- modals ----------
+let draft = null;
+function openModal(html, { wide = false } = {}) {
+  const lift = ui.view === 'trip' ? 86 : 12;
+  $('#modal').innerHTML = `
+    <div data-close class="fixed inset-0 z-30 bg-black/25 animate-fade"></div>
+    <div class="modal-panel glass glass-strong fixed inset-x-3 bottom-[var(--mb)] z-40 flex max-h-[var(--mh)] flex-col overflow-hidden rounded-[32px] translate-y-[120%] transition-transform duration-500 ease-[cubic-bezier(.2,.8,.2,1)] lg:inset-x-auto lg:left-1/2 lg:top-1/2 lg:bottom-auto lg:max-h-[85dvh] lg:w-[${wide ? 560 : 480}px] lg:-translate-x-1/2 lg:translate-y-[calc(-50%+16px)] lg:opacity-0 lg:transition-all lg:duration-300" style="--mb:calc(var(--sab) + ${lift}px);--mh:calc(100dvh - var(--sat) - 16px - var(--mb))"><div class="modal-body min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">${html}</div></div>`;
+  requestAnimationFrame(() => requestAnimationFrame(() => { const p = $('.modal-panel'); if (!p) return; p.classList.remove('translate-y-[120%]', 'lg:translate-y-[calc(-50%+16px)]', 'lg:opacity-0'); p.classList.add('translate-y-0', 'lg:-translate-y-1/2', 'lg:opacity-100'); const f = p.querySelector('[autofocus]'); if (f) f.focus(); }));
+}
+function closeModal() {
+  if (tab !== 'itinerary') { tab = 'itinerary'; if (ui.view === 'trip') renderTabbar(); }
+  const p = $('.modal-panel'); if (!p) return;
+  p.classList.remove('translate-y-0', 'lg:-translate-y-1/2', 'lg:opacity-100'); p.classList.add('translate-y-[120%]', 'lg:translate-y-[calc(-50%+16px)]', 'lg:opacity-0');
+  $('#modal [data-close]').classList.add('opacity-0', 'transition-opacity');
+  setTimeout(() => { if (!$('.modal-panel') || $('.modal-panel') === p) $('#modal').innerHTML = ''; }, 320);
+}
+const modalHead = (title, backAct) => `<div class="mb-4 flex items-center gap-2">${backAct ? `<button type="button" data-act="${backAct}" class="size-9 -ml-1 grid place-items-center rounded-full text-zinc-500 transition hover:bg-black/5 dark:hover:bg-white/10">${ICON.back}</button>` : ''}<h3 class="flex-1 text-[22px] font-bold tracking-tight">${title}</h3><button type="button" data-close class="size-9 grid place-items-center rounded-full bg-black/[.06] dark:bg-white/10 text-zinc-600 dark:text-zinc-300 transition active:scale-95">${ICON.close}</button></div>`;
+const field = (name, label, value = '', attrs = '') => `<label class="block"><span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">${label}</span><input name="${name}" value="${esc(value)}" ${attrs} class="mt-1 h-11 w-full rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 text-[15px] outline-none ring-accent/40 transition focus:ring-2"></label>`;
+const selectField = (name, label, opts, value) => `<label class="block"><span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">${label}</span><select name="${name}" class="mt-1 h-11 w-full appearance-none rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 text-[15px] outline-none ring-accent/40 transition focus:ring-2">${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+
+function openAddMethods() {
+  draft = { cityId: ui.cityId, date: ui.date };
+  const opt = (m, title, sub, icon) => `<button data-method="${m}" class="flex w-full items-center gap-3.5 rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-4 py-3.5 text-left transition hover:bg-black/[.08] dark:hover:bg-white/[.12] active:scale-[.985]"><span class="size-10 shrink-0 grid place-items-center rounded-full bg-white dark:bg-zinc-900 text-accent shadow-sm">${icon}</span><span class="min-w-0"><span class="block font-medium">${title}</span><span class="block text-sm text-zinc-500 dark:text-zinc-400">${sub}</span></span></button>`;
+  openModal(`${modalHead('Add a place')}<div class="flex flex-col gap-2">
+    ${opt('search', 'Search places', 'Restaurants, sights, addresses', ICON.search)}
+    ${opt('here', 'Use current location', 'Add wherever you are standing', ICON.locate)}
+    ${opt('link', 'Paste a Yelp or website link', 'We pull the name; you place the pin', ICON.link)}
+    ${opt('pin', 'Drop a pin on the map', 'Move the map, place it precisely', ICON.pin)}
+  </div>`);
+}
+function searchIndex() {
+  const seen = new Set(); const out = [];
+  T().entries.filter(pinned).forEach(e => { const k = e.name.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push({ name: e.name.replace(/^.*?· /, ''), cat: e.cat, lat: e.lat, lng: e.lng, cityId: e.cityId, address: e.address, website: e.links.website, yelp: e.links.yelp }); } });
+  return out;
+}
+function openSearch() {
+  openModal(`${modalHead('Search places', 'add')}
+    <div class="flex h-12 items-center gap-2 rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 ring-accent/40 transition focus-within:ring-2"><span class="text-zinc-400">${ICON.search}</span><input data-search autofocus autocomplete="off" placeholder="Search near ${esc(C().name)}…" class="h-full min-w-0 flex-1 bg-transparent text-[15px] outline-none"></div>
+    <div data-results class="mt-3 flex flex-col"><p class="px-2 py-6 text-center text-sm text-zinc-500">Type a place, address or business</p></div>
+    <p class="mt-3 text-xs text-zinc-400">Results from OpenStreetMap, biased to the map you\u2019re looking at.</p>`);
+}
+let searchSeq = 0, searchTimer;
+function paintResults(items, emptyMsg) {
+  const box = $('[data-results]'); if (!box) return;
+  box._items = items;
+  box.innerHTML = items.length ? items.map((p, i) => `<button data-result="${i}" class="flex items-center gap-3 rounded-xl px-2 py-2.5 text-left transition hover:bg-black/[.05] dark:hover:bg-white/[.08] active:scale-[.99]"><span class="size-9 shrink-0 grid place-items-center rounded-full bg-black/[.05] dark:bg-white/[.08] text-zinc-500">${ICON.pin}</span><span class="min-w-0"><span class="block truncate font-medium">${esc(p.name)}</span><span class="block truncate text-sm text-zinc-500">${CATS[p.cat].label}${p.address ? ' · ' + esc(p.address) : ''}${p.cityId ? ' · on this trip' : ''}</span></span></button>`).join('') : `<p class="px-2 py-6 text-center text-sm text-zinc-500">${esc(emptyMsg)}</p>`;
+}
+async function runSearch(q) {
+  const ql = q.trim().toLowerCase();
+  if (!ql) { paintResults([], 'Type a place, address or business'); return; }
+  const local = searchIndex().filter(p => p.name.toLowerCase().includes(ql) || (p.address || '').toLowerCase().includes(ql)).slice(0, 3);
+  paintResults(local, 'Searching…');
+  const seq = ++searchSeq;
+  try {
+    const c = map.getCenter(); const remote = await photon(q, { lat: c.lat, lng: c.lng });
+    if (seq !== searchSeq) return;
+    const names = new Set(local.map(p => p.name.toLowerCase()));
+    paintResults([...local, ...remote.filter(p => !names.has(p.name.toLowerCase()))].slice(0, 10), `No matches for “${q}”`);
+  } catch (e) { if (seq === searchSeq) paintResults(local, navigator.onLine ? 'Search is unavailable right now — try dropping a pin' : 'You\u2019re offline — drop a pin instead'); }
+}
+function useCurrentLocation() {
+  if (!navigator.geolocation) { toast('Location isn\u2019t available on this device'); return; }
+  closeModal(); toast('Finding you…');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const { latitude: lat, longitude: lng } = pos.coords; const address = await reverseGeocode(lat, lng);
+    draft = { ...draft, name: '', lat, lng, address }; openForm();
+  }, err => { toast(err.code === 1 ? 'Allow location access in Settings to use this' : 'Couldn\u2019t get your location'); openAddMethods(); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+}
+function openLink() {
+  openModal(`${modalHead('Paste a link', 'add')}
+    <form data-linkform class="flex flex-col gap-3">
+      <input name="url" autofocus autocomplete="off" placeholder="https://www.yelp.com/biz/… or a website" class="h-12 w-full rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-4 text-[15px] outline-none ring-accent/40 transition focus:ring-2">
+      <button class="h-12 rounded-full bg-accent font-semibold text-white transition active:scale-[.985]">Continue</button>
+      <p class="text-xs text-zinc-400">Yelp links fill the name and the Yelp button; any other link becomes the website. Set the pin from the form, or leave it for later.</p>
+    </form>`);
+}
+function parseLink(url) {
+  let name = '', website = '', yelp = '';
+  try {
+    const u = new URL(url.trim().startsWith('http') ? url.trim() : 'https://' + url.trim());
+    if (u.hostname.includes('yelp.')) { yelp = u.href; const slug = u.pathname.split('/').filter(Boolean)[1] || ''; name = slug.split('-').filter(w => !/^\d+$/.test(w)).map(w => w[0] ? w[0].toUpperCase() + w.slice(1) : w).join(' '); const cityWord = C().name.toLowerCase(); if (name.toLowerCase().endsWith(' ' + cityWord)) name = name.slice(0, -cityWord.length - 1); }
+    else { website = u.href; name = linkLabel(u.href, '') === '' ? u.hostname.replace(/^www\./, '').split('.')[0] : ''; if (name) name = name[0].toUpperCase() + name.slice(1); }
+  } catch (e) { name = url; }
+  return { name, website, yelp };
+}
+function startPinMode() {
+  pinMode = true; closeModal();
+  if (!isDesktop()) { detent = 'peek'; layoutSheet(); }
+  if (draft && pinned(draft)) map.setView([draft.lat, draft.lng], Math.max(map.getZoom(), 16));
+  const ch = $('#crosshair'); ch.classList.remove('hidden'); ch.innerHTML = ICON.pinBig;
+  $('#mapctl').innerHTML = `<div class="glass glass-strong animate-rise flex items-center gap-2 rounded-full p-1.5 pl-4"><span class="text-sm font-medium">Move the map to place the pin</span><button data-act="pincancel" class="h-10 rounded-full px-3 text-sm font-medium text-zinc-600 dark:text-zinc-300">Cancel</button><button data-act="pinconfirm" class="h-10 rounded-full bg-accent px-4 text-sm font-medium text-white transition active:scale-95">${pinReturn ? 'Pin here' : 'Add here'}</button></div>`;
+}
+function endPinMode() { pinMode = false; $('#crosshair').classList.add('hidden'); renderControls(); }
+function openForm(editId = null) {
+  const t = T(); const d = draft || {};
+  const cityOpts = t.cities.map(c => [c.id, c.name]);
+  const cityId = d.cityId || ui.cityId; const city = t.cities.find(c => c.id === cityId) || t.cities[0];
+  const dateOpts = city.dates.map(x => [x, fmtDate(x, {weekday:'short', month:'short', day:'numeric'})]);
+  const has = pinned(d);
+  openModal(`${modalHead(editId ? 'Edit place' : 'New place', editId ? null : 'add')}
+    <form data-placeform class="flex flex-col gap-3">
+      ${field('name', 'Name', d.name || '', 'required autofocus autocomplete="off"')}
+      <div class="grid grid-cols-2 gap-3">${selectField('cityId', 'City', cityOpts, cityId)}${selectField('cat', 'Type', Object.entries(CATS).map(([k, v]) => [k, v.label]), d.cat || 'sight')}</div>
+      <div class="grid grid-cols-2 gap-3">${selectField('date', 'Day', dateOpts, d.date || ui.date)}${field('time', 'Time', d.time || '', 'type="time"')}</div>
+      ${field('address', 'Address', d.address || '', 'autocomplete="off"')}
+      <div class="grid grid-cols-2 gap-3">${field('website', 'Website', d.website || '', 'inputmode="url"')}${field('yelp', 'Yelp', d.yelp || '', 'inputmode="url"')}</div>
+      <div class="grid grid-cols-2 gap-3">${field('reserve', 'Reservation link', d.reserve || '', 'inputmode="url"')}${field('phone', 'Phone', d.phone || '', 'inputmode="tel"')}</div>
+      <div class="grid grid-cols-2 gap-3">${field('instagram', 'Instagram', d.instagram || '', 'placeholder="@handle"')}${field('cost', 'Cost', d.cost || '', 'placeholder="€40 · 4 tickets"')}</div>
+      ${field('conf', 'Confirmation #', d.conf || '')}
+      ${editId ? '' : field('note', 'First note', '', 'placeholder="Why this made the list…"')}
+      <input type="hidden" name="lat" value="${has ? d.lat : ''}"><input type="hidden" name="lng" value="${has ? d.lng : ''}">
+      <button type="button" data-act="movepin" class="inline-flex items-center gap-1.5 self-start text-xs font-medium ${has ? 'text-zinc-500 hover:text-accent' : 'text-accent'}">${ICON.pinSm}${has ? `Pinned at ${Number(d.lat).toFixed(4)}, ${Number(d.lng).toFixed(4)} · Move` : 'No pin yet · Set on the map'}</button>
+      <button class="mt-1 h-12 rounded-full bg-accent font-semibold text-white transition active:scale-[.985]">${editId ? 'Save changes' : 'Add to trip'}</button>
+    </form>`, { wide: true });
+  $('.modal-panel').dataset.edit = editId || '';
+}
+const formDraft = form => { const f = Object.fromEntries(new FormData(form).entries()); return { ...f, lat: f.lat === '' ? null : Number(f.lat), lng: f.lng === '' ? null : Number(f.lng) }; };
+function savePlace(form, editId) {
+  const f = formDraft(form);
+  const links = { website: f.website.trim(), yelp: f.yelp.trim(), reserve: f.reserve.trim(), phone: f.phone.trim(), instagram: f.instagram.trim() };
+  Object.keys(links).forEach(k => { if (!links[k]) delete links[k]; });
+  const t = T(); let e;
+  if (editId) { e = entryById(editId); Object.assign(e, { name: f.name.trim(), cityId: f.cityId, cat: f.cat, date: f.date, time: f.time, lat: f.lat, lng: f.lng, address: f.address.trim(), cost: f.cost.trim(), conf: f.conf.trim(), links }); }
+  else {
+    e = E(f.cityId, f.date, f.time, f.name.trim(), f.cat, f.lat, f.lng, { address: f.address.trim(), cost: f.cost.trim(), conf: f.conf.trim(), links, by: me() });
+    if (f.note && f.note.trim()) e.notes.push({ id: uid(), date: todayISO(), by: me(), text: f.note.trim() });
+    t.entries.push(e);
+  }
+  const city = t.cities.find(c => c.id === e.cityId); if (!city.dates.includes(e.date)) { city.dates.push(e.date); city.dates.sort(); }
+  ui.cityId = e.cityId; ui.date = e.date; ui.selected = null; save();
+  closeModal(); renderHud(); renderSheet(false); updateMarkers();
+  setTimeout(() => selectEntry(e.id), 150);
+  toast(editId ? 'Saved' : `Added to ${fmtDate(e.date, {weekday:'long'})}`);
+}
+function openNewTrip() {
+  tripDraft = { access: Object.fromEntries(EVERYONE().map(n => [n, 'edit'])), cover: '' };
+  openModal(`${modalHead('Start a trip')}
+    <form data-tripform class="flex flex-col gap-3">
+      ${field('name', 'Trip name', '', 'required autofocus autocomplete="off" placeholder="Italy 2027"')}
+      <div class="grid grid-cols-2 gap-3">${field('start', 'Starts', '', 'type="date" required')}${field('end', 'Ends', '', 'type="date" required')}</div>
+      ${field('cities', 'Cities, in order', '', 'required autocomplete="off" placeholder="Rome, Florence, Venice"')}
+      <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">People</div>${peopleRows()}${ROLE_HINT}</div>
+      <p class="text-xs text-zinc-400">Days are split evenly across the cities to start — move any place to another day later.</p>
+      <button class="mt-1 h-12 rounded-full bg-accent font-semibold text-white transition active:scale-[.985]">Create trip</button>
+    </form>`);
+}
+async function createTrip(form) {
+  const f = Object.fromEntries(new FormData(form).entries());
+  if (f.end < f.start) { toast('End date is before the start'); return; }
+  const access = draftAccess(); if (!access) return;
+  const names = f.cities.split(',').map(s => s.trim()).filter(Boolean);
+  const dates = datesBetween(f.start, f.end);
+  const per = Math.max(1, Math.ceil(dates.length / names.length));
+  const known = n => CITY_INDEX[n.toLowerCase()] || CITY_INDEX[Object.keys(CITY_INDEX).find(k => n.toLowerCase().includes(k))];
+  const cities = names.map((n, i) => ({ id: uid(), name: n, country: '', center: known(n) || [20, 0], zoom: known(n) ? 13 : 2, dates: dates.slice(i * per, (i + 1) * per) }));
+  if (cities.length && !cities[cities.length - 1].dates.length) cities[cities.length - 1].dates = [dates[dates.length - 1]];
+  const trip = { id: uid(), name: f.name.trim(), start: f.start, end: f.end, access, cover: '', cities, entries: [] };
+  db.trips.push(trip); save(trip.id); closeModal();
+  setTimeout(() => openTrip(trip.id), 200);
+  for (const c of cities) {
+    try { const [p] = await photon(c.name, { limit: 1 }); if (p) { c.center = [p.lat, p.lng]; c.country = p.country; c.zoom = 13; save(trip.id); if (ui.tripId === trip.id && ui.cityId === c.id) { renderSheet(false); fitTo(dayEntries()); } } } catch (e) {}
+  }
+}
+function openAccount() {
+  const seg = (name, val, opts) => `<div class="flex rounded-full bg-black/[.05] dark:bg-white/[.08] p-1">${opts.map(([v, l]) => `<button data-setting="${name}" data-value="${v}" class="h-9 flex-1 rounded-full text-sm font-medium transition-all duration-300 ${v === val ? 'lens text-zinc-900 dark:text-white' : 'text-zinc-500'}">${l}</button>`).join('')}</div>`;
+  openModal(`${modalHead('The Dockerys')}
+    <div class="flex items-center gap-3"><div class="flex -space-x-2">${MEMBERS.map((m, i) => avatar(m, i, 'size-9 text-sm')).join('')}</div><p class="text-sm text-zinc-500 dark:text-zinc-400">You\u2019re <b class="font-semibold text-zinc-900 dark:text-white">${esc(me())}</b> on this device · each trip sets who can see or edit it</p></div>
+    <div class="mt-5 flex flex-col gap-4">
+      <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Appearance</div>${seg('appearance', db.settings.appearance, [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']])}</div>
+      <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Map</div>${seg('mapType', db.settings.mapType, [['satellite', 'Satellite'], ['standard', 'Standard']])}</div>
+    </div>
+    <div class="mt-6 flex items-center justify-between text-sm"><button data-act="switch" class="font-medium text-accent">Switch traveler</button>${MODE === 'cloud' ? `<button data-act="signout" class="font-medium text-red-600 dark:text-red-400">Sign out</button>` : `<button data-act="reset" class="font-medium text-zinc-500 hover:text-accent">Reset preview data</button>`}</div>
+    <p data-sync class="mt-3 text-xs text-zinc-400"></p>`);
+  setStatus(status);
+}
+
+// ---------- edit trip: cover, name, dates, people ----------
+let tripDraft = { access: {}, cover: '' };
+const ROLE_HINT = `<p class="mt-2 text-xs text-zinc-400">View can see everything but change nothing. Hidden means the trip doesn\u2019t appear for that person.</p>`;
+const roleSeg = name => `<div class="flex shrink-0 rounded-full bg-black/[.05] dark:bg-white/[.08] p-1">${ROLES.map(([v, l]) => `<button type="button" data-role="${esc(name)}" data-value="${v}" class="h-9 rounded-full px-2.5 text-[13px] font-medium transition-all duration-300 ${(tripDraft.access[name] || 'none') === v ? 'lens text-zinc-900 dark:text-white' : 'text-zinc-500'}">${l}</button>`).join('')}</div>`;
+const personRow = (m, i, right) => `<div class="flex items-center gap-3">${avatar(m, i, 'size-8 text-[11px]', 'ring-transparent')}<span class="min-w-0 flex-1 truncate text-sm font-medium">${esc(m.name)}${m.name === me() ? '<span class="ml-1.5 font-normal text-zinc-400">you</span>' : ''}</span>${right}</div>`;
+const peopleRows = () => `<div class="flex flex-col gap-2">${MEMBERS.map((m, i) => personRow(m, i, roleSeg(m.name))).join('')}</div>`;
+const dayCount = (a, b) => { const n = a && b && b >= a ? datesBetween(a, b).length : 0; return n ? `${n} ${n === 1 ? 'day' : 'days'}` : 'Pick both dates'; };
+const coverBox = () => { const name = ($('[data-edittripform] input[name="name"]') || {}).value || T().name; return `<div data-coverbox class="relative">${cover({ id: '', name, cover: tripDraft.cover }, 'h-40 rounded-[22px]')}<div class="absolute inset-x-3 bottom-3 flex justify-end gap-2"><label class="inline-flex h-9 cursor-pointer items-center rounded-full bg-white/90 dark:bg-zinc-900/90 px-3.5 text-[13px] font-medium backdrop-blur shadow transition active:scale-95">${tripDraft.cover ? 'Change photo' : 'Add a photo'}<input type="file" accept="image/*" data-cover class="hidden"></label>${tripDraft.cover ? `<button type="button" data-act="removecover" class="h-9 rounded-full bg-white/90 dark:bg-zinc-900/90 px-3.5 text-[13px] font-medium text-red-600 dark:text-red-400 backdrop-blur shadow transition active:scale-95">Remove</button>` : ''}</div></div>`; };
+function draftAccess() {
+  const access = {}; EVERYONE().forEach(n => { const r = tripDraft.access[n]; if (r && r !== 'none') access[n] = r; });
+  if (!Object.values(access).includes('edit')) { toast('Someone has to be able to edit'); return null; }
+  const mine = access[me()];
+  if (mine !== 'edit' && !confirm(mine === 'view' ? 'You\u2019ll be able to see this trip but not change it. Continue?' : 'This trip will be hidden from you. Continue?')) return null;
+  return access;
+}
+function openEditTrip() {
+  const t = T(); if (!t) return;
+  if (!canEdit()) { openTripDetails(t); return; }
+  tripDraft = { access: accessOf(t), cover: coverOf(t) };
+  openModal(`${modalHead('Edit trip')}
+    <form data-edittripform class="flex flex-col gap-3">
+      ${coverBox()}
+      ${field('name', 'Trip name', t.name, 'required autocomplete="off"')}
+      <div class="grid grid-cols-2 gap-3">${field('start', 'Starts', t.start, 'type="date" required')}${field('end', 'Ends', t.end, 'type="date" required')}</div>
+      <p data-days class="-mt-1 text-xs text-zinc-400">${dayCount(t.start, t.end)}</p>
+      <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">People</div>${peopleRows()}${ROLE_HINT}</div>
+      <button class="mt-1 h-12 rounded-full bg-accent font-semibold text-white transition active:scale-[.985]">Save changes</button>
+    </form>`, { wide: true });
+}
+function openTripDetails(t) {
+  const label = { edit: 'Can edit', view: 'View only' };
+  openModal(`${modalHead('Trip details')}
+    <div class="flex flex-col gap-4">
+      ${cover(t, 'h-40 rounded-[22px]')}
+      <div><h4 class="text-lg font-semibold tracking-tight">${esc(t.name)}</h4><p class="text-sm text-zinc-500 dark:text-zinc-400">${rangeLabel(t.start, t.end)} · ${dayCount(t.start, t.end)}</p></div>
+      <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">People</div><div class="flex flex-col gap-2">${MEMBERS.filter(m => roleOf(t, m.name)).map((m, i) => personRow(m, i, `<span class="text-sm text-zinc-500 dark:text-zinc-400">${label[roleOf(t, m.name)]}</span>`)).join('')}</div></div>
+      <p class="text-xs text-zinc-400">You can see this trip but not change it. Anyone marked “Can edit” can change that.</p>
+    </div>`);
+}
+async function setCover(file) {
+  toast(MODE === 'cloud' ? 'Uploading photo…' : 'Adding photo…');
+  try { tripDraft.cover = MODE === 'cloud' ? await uploadPhoto(file) : await toDataUrl(await shrink(file, 1200, .78)); }
+  catch (e) { toast(navigator.onLine ? 'Upload failed — try again' : 'Photos need a connection'); return; }
+  const box = $('[data-coverbox]'); if (box) box.outerHTML = coverBox();
+}
+function saveTrip(form) {
+  const t = T(); if (!t || !canEdit()) { toast('This trip is view only for you'); return; }
+  const f = Object.fromEntries(new FormData(form).entries());
+  const name = f.name.trim(); if (!name) return;
+  if (f.end < f.start) { toast('End date is before the start'); return; }
+  const access = draftAccess(); if (!access) return;
+  if (f.start !== t.start || f.end !== t.end) {
+    const outside = t.entries.filter(e => e.date < f.start || e.date > f.end).length;
+    if (outside && !confirm(`${outside} ${outside === 1 ? 'place falls' : 'places fall'} outside the new dates and will move to the nearest day. Continue?`)) return;
+    applyDates(t, f.start, f.end);
+  }
+  Object.assign(t, { name, start: f.start, end: f.end, access, cover: tripDraft.cover || '' }); delete t.travelers;
+  save(); closeModal();
+  if (!roleOf(t, me())) { closeTrip(); toast('Trip updated · it\u2019s now hidden from you'); return; }
+  if (!t.cities.find(c => c.id === ui.cityId)) ui.cityId = t.cities[0].id;
+  if (!C().dates.includes(ui.date)) ui.date = firstDate();
+  ui.selected = null; saveUi();
+  renderHud(); renderSheet(false); renderControls(); updateMarkers(); fitTo(dayEntries());
+  toast('Trip updated');
+}
+// re-flow the days: trim days outside the range, pull stray places to the nearest day, hand uncovered days to the city before them
+function applyDates(t, start, end) {
+  const all = datesBetween(start, end);
+  t.entries.forEach(e => { if (e.date < start) e.date = start; else if (e.date > end) e.date = end; });
+  t.cities.forEach(c => { c.dates = (c.dates || []).filter(d => d >= start && d <= end); });
+  t.entries.forEach(e => { const c = t.cities.find(x => x.id === e.cityId); if (c && !c.dates.includes(e.date)) c.dates.push(e.date); });
+  if (!t.cities.length) t.cities.push({ id: uid(), name: t.name, country: '', center: [20, 0], zoom: 2, dates: [] });
+  const kept = t.cities.filter(c => c.dates.length);
+  if (kept.length) t.cities = kept;
+  else { const per = Math.max(1, Math.ceil(all.length / t.cities.length)); t.cities.forEach((c, i) => { c.dates = all.slice(i * per, (i + 1) * per); if (!c.dates.length) c.dates = [all[all.length - 1]]; }); }
+  const owner = {}; t.cities.forEach(c => c.dates.forEach(d => { owner[d] = c; }));
+  let last = t.cities.find(c => c.dates.length) || t.cities[0];
+  all.forEach(d => { if (owner[d]) last = owner[d]; else last.dates.push(d); });
+  t.cities.forEach(c => c.dates.sort());
+}
+
+// ---------- trip gallery & viewer: every photo on any place, in trip order ----------
+const tripPhotos = (t = T()) => t ? t.entries.slice().sort((a, b) => (a.date + timeKey(a)).localeCompare(b.date + timeKey(b))).flatMap(e => (e.photos || []).map(url => ({ url, e }))) : [];
+function galleryHtml() {
+  const t = T(), items = tripPhotos(t), cityName = id => (t.cities.find(c => c.id === id) || {}).name || '';
+  const groups = []; items.forEach((x, i) => { let g = groups[groups.length - 1]; if (!g || g.date !== x.e.date) { g = { date: x.e.date, items: [] }; groups.push(g); } g.items.push({ ...x, i }); });
+  const places = new Set(items.map(x => x.e.id)).size;
+  return `${modalHead('Photos')}<div data-gallery>
+    <p class="-mt-2 mb-4 text-sm text-zinc-500 dark:text-zinc-400">${items.length ? `${items.length} ${items.length === 1 ? 'photo' : 'photos'} from ${places} ${places === 1 ? 'place' : 'places'} · every photo added to a place lands here` : 'Photos added to any place show up here, grouped by day.'}</p>
+    ${groups.map(g => `<div class="mb-4"><div class="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-400">${fmtDate(g.date, {weekday:'short', month:'short', day:'numeric'})} · ${esc(cityName(g.items[0].e.cityId))}</div><div class="grid grid-cols-3 gap-1.5">${g.items.map(x => `<button type="button" data-view-photo="${esc(x.url)}" class="relative aspect-square overflow-hidden rounded-2xl bg-black/[.05] dark:bg-white/[.08] transition active:scale-95"><img src="${esc(x.url)}" loading="lazy" alt="" class="absolute inset-0 size-full object-cover"><span class="absolute inset-x-0 bottom-0 truncate px-2 pb-1.5 pt-6 text-left text-[11px] font-medium text-white" style="background:linear-gradient(to top,rgba(0,0,0,.65),transparent)">${esc(x.e.name)}</span></button>`).join('')}</div></div>`).join('')}
+    ${items.length ? '' : `<div class="grid place-items-center rounded-2xl bg-black/[.05] dark:bg-white/[.08] py-12 text-zinc-400">${ICON.photo.replace('size-5', 'size-8')}</div>`}</div>`;
+}
+function openGallery() { tab = 'photos'; renderTabbar(); openModal(galleryHtml(), { wide: true }); }
+let lb = { items: [], i: 0 };
+const lbOpen = () => !$('#lightbox').classList.contains('hidden');
+const lbCap = x => { const c = T().cities.find(c => c.id === x.e.cityId); return `<div class="flex items-end justify-between gap-3"><div class="min-w-0"><div class="truncate font-semibold">${esc(x.e.name)}</div><div class="text-sm text-white/70">${fmtDate(x.e.date, {weekday:'short', month:'short', day:'numeric'})}${x.e.time ? ' · ' + fmtTime(x.e.time) : ''}${c ? ' · ' + esc(c.name) : ''}</div></div><div class="flex shrink-0 gap-2"><button data-act="lbgoto" class="h-9 rounded-full bg-white/15 px-3.5 text-[13px] font-medium backdrop-blur transition active:scale-95">Go to place</button>${canEdit() ? `<button data-act="lbdelete" class="h-9 rounded-full bg-white/15 px-3.5 text-[13px] font-medium text-red-300 backdrop-blur transition active:scale-95">Delete</button>` : ''}</div></div>`; };
+function openLightbox(items, i) {
+  lb = { items, i }; const box = $('#lightbox'); box.classList.remove('hidden');
+  box.innerHTML = `<div class="absolute inset-0 bg-black animate-fade"></div>
+    <div data-lbtrack class="absolute inset-0 flex snap-x snap-mandatory overflow-x-auto no-scrollbar">${items.map(x => `<div class="flex h-full w-full shrink-0 snap-center items-center justify-center" style="padding:calc(var(--sat) + 64px) 0 calc(var(--sab) + 96px)"><img src="${esc(x.url)}" alt="" class="max-h-full max-w-full object-contain"></div>`).join('')}</div>
+    <div class="absolute inset-x-0 top-0 flex items-center justify-between px-3" style="padding-top:calc(var(--sat) + 10px)"><button data-act="lbclose" class="size-11 grid place-items-center rounded-full bg-white/15 text-white backdrop-blur transition active:scale-95">${ICON.close}</button><span data-lbcount class="rounded-full bg-white/15 px-3 py-1 text-[13px] font-medium text-white backdrop-blur">${i + 1} of ${items.length}</span></div>
+    <div data-lbcap class="absolute inset-x-0 bottom-0 px-5 text-white" style="padding-bottom:calc(var(--sab) + 20px)">${lbCap(items[i])}</div>
+    <button data-act="lbprev" class="absolute left-5 top-1/2 hidden size-12 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white backdrop-blur lg:grid">${ICON.back}</button>
+    <button data-act="lbnext" class="absolute right-5 top-1/2 hidden size-12 -translate-y-1/2 rotate-180 place-items-center rounded-full bg-white/15 text-white backdrop-blur lg:grid">${ICON.back}</button>`;
+  const track = $('[data-lbtrack]'); track.scrollLeft = i * track.clientWidth;
+  track.addEventListener('scroll', () => { const n = Math.round(track.scrollLeft / track.clientWidth); if (n !== lb.i && lb.items[n]) { lb.i = n; $('[data-lbcount]').textContent = `${n + 1} of ${lb.items.length}`; $('[data-lbcap]').innerHTML = lbCap(lb.items[n]); } }, { passive: true });
+}
+function closeLightbox() { const box = $('#lightbox'); box.classList.add('hidden'); box.innerHTML = ''; }
+function lbStep(d) { const track = $('[data-lbtrack]'); if (!track) return; const n = Math.max(0, Math.min(lb.items.length - 1, lb.i + d)); track.scrollTo({ left: n * track.clientWidth, behavior: 'smooth' }); }
+function viewPhoto(url) { const items = tripPhotos(), i = items.findIndex(x => x.url === url); if (i >= 0) openLightbox(items, i); }
+function deletePhoto(x) {
+  x.e.photos = (x.e.photos || []).filter(u => u !== x.url); save();
+  if (MODE === 'cloud' && x.url.startsWith(API + '/photos/')) api('DELETE', x.url.slice(API.length + 1)).catch(() => {});
+  renderSheet(false); if (!pinMode) renderControls();
+  if ($('[data-gallery]')) $('.modal-body').innerHTML = galleryHtml();
+  const items = tripPhotos(); if (items.length) openLightbox(items, Math.min(lb.i, items.length - 1)); else closeLightbox();
+  toast('Photo deleted');
+}
+
+// ---------- photos ----------
+async function addPhotos(e, files) {
+  const urls = [];
+  if (MODE === 'cloud') {
+    toast(files.length > 1 ? `Uploading ${files.length} photos…` : 'Uploading photo…');
+    for (const f of files) { try { urls.push(await uploadPhoto(f)); } catch (err) { toast(navigator.onLine ? 'Upload failed — try again' : 'Photos need a connection'); break; } }
+  } else files.forEach(f => urls.push(URL.createObjectURL(f)));
+  if (!urls.length) return;
+  e.photos = [...(e.photos || []), ...urls]; save(); renderSheet(false); if (!pinMode) renderControls();
+  toast(`${urls.length === 1 ? 'Photo' : urls.length + ' photos'} added${MODE === 'cloud' ? ' · in the trip gallery too' : ' (kept for this session)'}`);
+}
+async function shrink(file, max = 1600, q = .82) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(file));
+  const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/jpeg', q));
+}
+const toDataUrl = blob => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
+async function uploadPhoto(file) {
+  const blob = await shrink(file);
+  const r = await fetch(`${API}/photos`, { method: 'POST', headers: { 'content-type': 'image/jpeg', 'x-doctravels-key': auth.key }, body: blob });
+  if (!r.ok) throw new Error('upload failed');
+  const { key } = await r.json(); return `${API}/photos/${key}`;
+}
+
+// ---------- events ----------
+document.addEventListener('click', ev => {
+  const t = ev.target;
+  const act = t.closest('[data-act]')?.dataset.act;
+  const tb = t.closest('[data-tab]'); if (tb) { onTab(tb.dataset.tab); return; }
+  const vp = t.closest('[data-view-photo]'); if (vp) { viewPhoto(vp.dataset.viewPhoto); return; }
+  const open = t.closest('[data-open]'); if (open) { openTrip(open.dataset.open); return; }
+  const city = t.closest('[data-city]'); if (city) { setCity(city.dataset.city); return; }
+  const date = t.closest('[data-date]'); if (date) { setDate(date.dataset.date); return; }
+  const rate = t.closest('[data-rate]'); if (rate) { if (!canEdit()) { toast('This trip is view only for you'); return; } const e = entryById(rate.closest('.tile').dataset.id); e.rating = Number(rate.dataset.rate) === e.rating ? 0 : Number(rate.dataset.rate); save(); renderSheet(false); return; }
+  const method = t.closest('[data-method]'); if (method) { ({ search: openSearch, link: openLink, pin: startPinMode, here: useCurrentLocation })[method.dataset.method](); return; }
+  const res = t.closest('[data-result]'); if (res) { const p = $('[data-results]')._items[Number(res.dataset.result)]; draft = { ...draft, name: p.name, address: p.address, lat: p.lat, lng: p.lng, cat: p.cat, website: p.website, yelp: p.yelp, cityId: p.cityId || ui.cityId, date: (p.cityId && p.cityId !== ui.cityId) ? T().cities.find(c => c.id === p.cityId).dates[0] : ui.date }; openForm(); return; }
+  const role = t.closest('[data-role]'); if (role) { tripDraft.access[role.dataset.role] = role.dataset.value; role.parentElement.outerHTML = roleSeg(role.dataset.role); return; }
+  const setting = t.closest('[data-setting]'); if (setting) { db.settings[setting.dataset.setting] = setting.dataset.value; saveUi(); applyAppearance(); if (map) setTiles(); openAccount(); return; }
+  if (t.closest('[data-close]')) { closeModal(); return; }
+  if (!act) return;
+  if (ui.view === 'trip' && !canEdit() && ['add', 'edit', 'setpin', 'delete', 'movepin', 'pinconfirm'].includes(act)) { toast('This trip is view only for you'); return; }
+  const tile = t.closest('.tile');
+  switch (act) {
+    case 'back': closeTrip(); break;
+    case 'account': openAccount(); break;
+    case 'trip': openEditTrip(); break;
+    case 'removecover': { tripDraft.cover = ''; const b = $('[data-coverbox]'); if (b) b.outerHTML = coverBox(); break; }
+    case 'newtrip': openNewTrip(); break;
+    case 'add': openAddMethods(); break;
+    case 'layers': db.settings.mapType = db.settings.mapType === 'satellite' ? 'standard' : 'satellite'; saveUi(); setTiles(); toast(db.settings.mapType === 'satellite' ? 'Satellite' : 'Standard map'); break;
+    case 'locate': locateMe(); break;
+    case 'gallery': openGallery(); break;
+    case 'lbclose': closeLightbox(); break;
+    case 'lbprev': lbStep(-1); break;
+    case 'lbnext': lbStep(1); break;
+    case 'lbgoto': { const x = lb.items[lb.i]; closeLightbox(); closeModal(); if (x && ui.selected !== x.e.id) selectEntry(x.e.id); break; }
+    case 'lbdelete': { const x = lb.items[lb.i]; if (x && canEdit() && confirm('Delete this photo from the trip?')) deletePhoto(x); break; }
+    case 'toggle': selectEntry(tile.dataset.id); break;
+    case 'edit': { const e = entryById(tile.dataset.id); draft = { ...e, ...e.links }; openForm(e.id); break; }
+    case 'setpin': { const e = entryById(tile.dataset.id); draft = { ...e, ...e.links }; pinReturn = { edit: e.id }; startPinMode(); break; }
+    case 'delete': { const e = entryById(tile.dataset.id); if (confirm(`Remove “${e.name}” from the trip?`)) { T().entries = T().entries.filter(x => x.id !== e.id); ui.selected = null; save(); renderSheet(false); updateMarkers(); toast('Removed'); } break; }
+    case 'movepin': { const form = $('[data-placeform]'); pinReturn = { edit: $('.modal-panel').dataset.edit || null }; draft = { ...draft, ...formDraft(form) }; startPinMode(); break; }
+    case 'pincancel': { endPinMode(); if (pinReturn) { const r = pinReturn; pinReturn = null; openForm(r.edit); } break; }
+    case 'pinconfirm': {
+      const c = map.getCenter(); endPinMode();
+      if (pinReturn) { const r = pinReturn; pinReturn = null; draft = { ...draft, lat: c.lat, lng: c.lng }; openForm(r.edit); }
+      else { draft = { ...draft, name: '', lat: c.lat, lng: c.lng, address: '' }; openForm(); reverseGeocode(c.lat, c.lng).then(a => { const inp = $('[data-placeform] input[name="address"]'); if (inp && !inp.value) inp.value = a; }); }
+      break;
+    }
+    case 'switch': closeModal(); openGate({ whoOnly: true }); break;
+    case 'signout': if (confirm('Sign out of DocTravels on this device?')) signOut(); break;
+    case 'reset': localStorage.removeItem(KEY); location.reload(); break;
+  }
+});
+document.addEventListener('submit', ev => {
+  const f = ev.target; ev.preventDefault();
+  if (f.matches('[data-gate]')) submitGate(f);
+  else if (f.matches('[data-note]')) { if (!canEdit()) { toast('This trip is view only for you'); return; } const text = f.text.value.trim(); if (!text) return; const e = entryById(f.closest('.tile').dataset.id); e.notes.push({ id: uid(), date: todayISO(), by: me(), text }); save(); renderSheet(false); toast('Note saved'); }
+  else if (f.matches('[data-placeform]')) { if (!canEdit()) { toast('This trip is view only for you'); return; } savePlace(f, f.closest('.modal-panel').dataset.edit || null); }
+  else if (f.matches('[data-tripform]')) createTrip(f);
+  else if (f.matches('[data-edittripform]')) saveTrip(f);
+  else if (f.matches('[data-linkform]')) { const p = parseLink(f.url.value); if (!p.website && !p.yelp) { toast('Paste a full link'); return; } draft = { ...draft, ...p, lat: null, lng: null }; openForm(); }
+});
+document.addEventListener('input', ev => {
+  if (ev.target.matches('[data-search]')) { clearTimeout(searchTimer); const q = ev.target.value; searchTimer = setTimeout(() => runSearch(q), 300); }
+  if (ev.target.matches('[data-edittripform] input[type="date"]')) { const f = ev.target.form, p = $('[data-days]'); if (p) p.textContent = dayCount(f.start.value, f.end.value); }
+});
+document.addEventListener('change', ev => {
+  if (ev.target.matches('[data-photo]') && ev.target.files[0]) { if (!canEdit()) { toast('This trip is view only for you'); return; } const e = entryById(ev.target.closest('.tile').dataset.id); addPhotos(e, [...ev.target.files]); }
+  if (ev.target.matches('[data-cover]') && ev.target.files[0]) setCover(ev.target.files[0]);
+  if (ev.target.matches('[data-placeform] select[name="cityId"]')) { const city = T().cities.find(c => c.id === ev.target.value); const sel = ev.target.form.date; sel.innerHTML = city.dates.map(x => `<option value="${x}">${fmtDate(x, {weekday:'short', month:'short', day:'numeric'})}</option>`).join(''); }
+});
+document.addEventListener('keydown', ev => {
+  if (lbOpen()) { if (ev.key === 'Escape') closeLightbox(); else if (ev.key === 'ArrowLeft') lbStep(-1); else if (ev.key === 'ArrowRight') lbStep(1); return; }
+  if (ev.key === 'Escape') { if ($('.modal-panel')) closeModal(); else if (pinMode) { endPinMode(); pinReturn = null; } }
+});
+addEventListener('resize', () => { if (ui.view === 'trip') { layoutSheet(); map && map.invalidateSize(); } });
+matchMedia('(min-width: 1024px)').addEventListener('change', () => { if (ui.view === 'trip') { layoutSheet(); renderSheet(false); map && setTimeout(() => map.invalidateSize(), 50); } });
+
+// ---------- boot ----------
+(async function boot() {
+  applyAppearance();
+  if (auth.key) { MODE = 'cloud'; renderDash(); restoreView(); afterLogin(); return; }
+  MODE = await detectMode();
+  if (MODE === 'local') { if (!db.trips.length) db.trips = structuredClone(SEED_TRIPS); db.trips.forEach(t => t.entries.forEach(e => { if (e.photos) e.photos = e.photos.filter(p => !p.startsWith('blob:')); })); renderDash(); restoreView(); setStatus('local'); return; }
+  renderDash(); openGate();
+})();
+</script>
+</body>
+</html>

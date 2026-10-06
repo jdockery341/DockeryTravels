@@ -1,0 +1,14 @@
+{
+  "name": "doctravels",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DocTravels — the Dockery family trip planner",
+  "scripts": {
+    "dev": "npx netlify-cli dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "latest",
+    "@netlify/database": "latest"
+  }
+}
