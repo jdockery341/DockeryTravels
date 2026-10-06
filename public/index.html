@@ -79,7 +79,7 @@
 
 <div id="modal"></div>
 <div id="lightbox" class="hidden fixed inset-0 z-[55] select-none"></div>
-<div id="gate" class="hidden fixed inset-0 z-50 grid place-items-center overflow-y-auto [background:var(--wash)] p-6"></div>
+<div id="gate" class="hidden fixed inset-0 z-50 overflow-y-auto overscroll-contain [background:var(--wash)]"></div>
 <div id="toast" class="pointer-events-none fixed inset-x-0 z-[60] flex justify-center" style="bottom:calc(var(--sab) + 90px)"></div>
 
 <script>
@@ -118,6 +118,10 @@ const ICON = {
   photo: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 8"/></svg>',
   home: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h4.5v-5.5h4v5.5h4.5V10"/></svg>',
   route: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M6 8v5.5a2.5 2.5 0 0 0 2.5 2.5H18"/></svg>',
+  eye: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.7a3 3 0 0 0 2.7 2.7"/><path d="M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16.5 16.5 0 0 1-3.2 3.9"/><path d="M6.3 6.4C3.9 8.1 2.5 12 2.5 12s3.5 6.5 9.5 6.5c1.4 0 2.7-.3 3.9-.9"/></svg>',
+  login: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H10"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/></svg>',
+  user: '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="10" r="3"/><path d="M6.2 18.5a7 7 0 0 1 11.6 0"/></svg>',
 };
 const CATS = {
   food: { label: 'Food & drink', dot: 'bg-orange-500' },
@@ -127,15 +131,16 @@ const CATS = {
   transit: { label: 'Transit', dot: 'bg-zinc-400' },
 };
 
-// ---------- the family (edit names here) ----------
-const MEMBERS = [{ name: 'Jeremiah', initial: 'J' }, { name: 'K', initial: 'K' }, { name: 'E', initial: 'E' }, { name: 'N', initial: 'N' }];
-const EVERYONE = () => MEMBERS.map(m => m.name);
-const memberOf = name => MEMBERS.find(m => m.name === name) || { name, initial: String(name || '?')[0].toUpperCase() };
-// trip.access = { name: 'edit' | 'view' }; anyone missing can't see the trip. Older trips: travelers → edit, others → view; nothing set → everyone edits
+// ---------- the family: everyone who has signed in (sent by the server with the trips) ----------
+let MEMBERS = [];
+const EVERYONE = () => MEMBERS.map(m => m.id);
+const memberById = id => MEMBERS.find(m => m.id === id) || (auth.user && auth.user.id === id ? { id, email: auth.user.email, name: auth.user.name, initial: initialOf(auth.user.name) } : { id, name: 'Someone', initial: '?' });
+const meMember = () => memberById(me());
+// trip.access = { userId: 'edit' | 'view' }; anyone missing can't see the trip. Nothing set → everyone edits
 const ROLES = [['edit', 'Edit'], ['view', 'View'], ['none', 'Hidden']];
 function roleOf(t, name) { if (t.access) return t.access[name] || null; if (t.travelers && t.travelers.length) return t.travelers.includes(name) ? 'edit' : 'view'; return 'edit'; }
 const accessOf = t => Object.fromEntries(EVERYONE().map(n => [n, roleOf(t, n) || 'none']));
-const peopleOf = t => EVERYONE().filter(n => roleOf(t, n)).map(memberOf);
+const peopleOf = t => [...new Set([...EVERYONE(), ...Object.keys(t.access || {})])].filter(id => roleOf(t, id)).map(memberById);
 const coverOf = t => t.cover === undefined ? ((SEED_TRIPS.find(s => s.id === t.id) || {}).cover || '') : t.cover;
 
 // ---------- the trip ----------
@@ -143,7 +148,7 @@ const E = (cityId, date, time, name, cat, lat, lng, extra = {}) => ({ id: uid(),
 let seedN = 0;
 const S = (cityId, date, time, name, cat, lat, lng, extra = {}) => E(cityId, date, time, name, cat, lat, lng, { ...extra, id: 'bcn26-' + (++seedN) });
 const SEED_TRIPS = [{
-  id: 'barcelona-2026', name: 'Barcelona', start: '2026-10-07', end: '2026-10-20', access: Object.fromEntries(EVERYONE().map(n => [n, 'edit'])), cover: 'covers/barcelona.jpg',
+  id: 'barcelona-2026', name: 'Barcelona', start: '2026-10-07', end: '2026-10-20', cover: 'covers/barcelona.jpg',
   cities: [
     { id: 'barcelona', name: 'Barcelona', country: 'Spain', center: [41.3874, 2.1686], dates: ['2026-10-07', '2026-10-08', '2026-10-09', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20'] },
     { id: 'marseille', name: 'Marseille', country: 'France', center: [43.2965, 5.3698], dates: ['2026-10-10'] },
@@ -187,21 +192,23 @@ const SEED_TRIPS = [{
 const CITY_INDEX = { barcelona: [41.3874, 2.1686], girona: [41.9794, 2.8214], sitges: [41.2371, 1.8059], madrid: [40.4168, -3.7038], seville: [37.3891, -5.9845], valencia: [39.4699, -0.3763], lisbon: [38.7223, -9.1393], porto: [41.1579, -8.6291], paris: [48.8566, 2.3522], marseille: [43.2965, 5.3698], rome: [41.9028, 12.4964], florence: [43.7696, 11.2558], naples: [40.8518, 14.2681], venice: [45.4408, 12.3155], malta: [35.8989, 14.5146], valletta: [35.8989, 14.5146], london: [51.5074, -0.1278], amsterdam: [52.3676, 4.9041], tokyo: [35.6762, 139.6503], kyoto: [35.0116, 135.7681], 'new york': [40.7128, -74.006], washington: [38.9072, -77.0369], 'cannon beach': [45.8918, -123.9615], newport: [44.6368, -124.0535], 'san diego': [32.7157, -117.1611], honolulu: [21.3069, -157.8583], 'mexico city': [19.4326, -99.1332], cancun: [21.1619, -86.8515], 'san juan': [18.4655, -66.1057], nashville: [36.1627, -86.7816], chicago: [41.8781, -87.6298], denver: [39.7392, -104.9903], orlando: [28.5383, -81.3792], boston: [42.3601, -71.0589], 'san francisco': [37.7749, -122.4194], seattle: [47.6062, -122.3321], dublin: [53.3498, -6.2603], edinburgh: [55.9533, -3.1883], athens: [37.9838, 23.7275], santorini: [36.3932, 25.4615] };
 
 // ---------- state ----------
-const KEY = 'doctravels.v4';
+const KEY = 'doctravels.v5';
 let cache = null; try { cache = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-if (!cache || cache.v !== 4) cache = null;
+if (!cache || cache.v !== 5) cache = null;
 const db = { settings: { appearance: 'auto', mapType: 'satellite' }, ui: { view: 'dashboard' }, trips: [] };
 if (cache) { Object.assign(db.settings, cache.settings || {}); Object.assign(db.ui, cache.ui || {}); db.trips = cache.trips || []; }
-const auth = (cache && cache.auth) || { key: '', me: '' };
+const auth = Object.assign({ token: '', refresh: '', exp: 0, user: null, demo: false }, (cache && cache.auth) || {});
+MEMBERS = (cache && cache.members) || [];
 const meta = (cache && cache.meta) || {};
 const dirty = new Set((cache && cache.dirty) || []);
 const dirtySeq = {};
 let MODE = 'cloud', setupError = '', lastSync = (cache && cache.lastSync) || 0, status = 'synced', loading = false;
 const ui = db.ui;
-const me = () => auth.me || MEMBERS[0].name;
+const me = () => (auth.user && auth.user.id) || '';
+const myName = () => (auth.user && auth.user.name) || 'You';
 const canEdit = (t = T()) => !!t && roleOf(t, me()) === 'edit';
 const visibleTrips = () => db.trips.filter(t => roleOf(t, me()));
-const persist = () => { try { localStorage.setItem(KEY, JSON.stringify({ v: 4, settings: db.settings, ui, trips: db.trips, auth, meta, dirty: [...dirty], lastSync })); } catch (e) {} };
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify({ v: 5, settings: db.settings, ui, trips: db.trips, auth, members: MEMBERS, meta, dirty: [...dirty], lastSync })); } catch (e) {} };
 const saveUi = persist;
 function save(tripId = ui.tripId) { persist(); if (tripId) { dirty.add(tripId); dirtySeq[tripId] = (dirtySeq[tripId] || 0) + 1; scheduleSync(); } }
 const T = () => db.trips.find(t => t.id === ui.tripId);
@@ -226,25 +233,24 @@ function toast(msg) {
 
 // ---------- cloud sync (Netlify Functions + Netlify DB) ----------
 const API = 'api';
-const api = (method, path, body) => fetch(`${API}/${path}`, { method, headers: { 'content-type': 'application/json', 'x-doctravels-key': auth.key }, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
 let syncTimer, syncing = false;
 function scheduleSync(ms = 700) { clearTimeout(syncTimer); syncTimer = setTimeout(sync, ms); }
 async function sync() {
-  if (MODE !== 'cloud' || syncing || !dirty.size || !auth.key) return;
+  if (MODE !== 'cloud' || syncing || !dirty.size || !auth.token) return;
   syncing = true; setStatus('saving'); let denied = false;
   try {
     for (const id of [...dirty]) {
       const trip = db.trips.find(t => t.id === id);
       if (!trip) { dirty.delete(id); continue; }
       const seq = dirtySeq[id] || 0;
-      let res = await api('PUT', `trips/${encodeURIComponent(id)}`, { data: trip, version: meta[id]?.version || 0, by: me() });
+      let res = await api('PUT', `trips/${encodeURIComponent(id)}`, { data: trip, version: meta[id]?.version || 0 });
       if (res.status === 409) {
         const srv = await res.json();
         if (srv.data) { const m = mergeTrip(trip, srv.data, meta[id]?.base); Object.assign(trip, m); }
-        res = await api('PUT', `trips/${encodeURIComponent(id)}`, { data: trip, version: srv.version || 0, by: me() });
+        res = await api('PUT', `trips/${encodeURIComponent(id)}`, { data: trip, version: srv.version || 0 });
         rerender();
       }
-      if (res.status === 401) { signOut('That passcode no longer works'); return; }
+      if (res.status === 401) { signOut('Your session expired \u2014 sign in again'); return; }
       if (res.status === 403) { dirty.delete(id); delete meta[id]; denied = true; continue; }
       if (!res.ok) throw new Error('save failed');
       const { version } = await res.json();
@@ -256,12 +262,14 @@ async function sync() {
   finally { syncing = false; persist(); if (denied) { toast('This trip is view only for you — your change was undone'); refresh(); } if (dirty.size && navigator.onLine) scheduleSync(status === 'offline' ? 15000 : 500); }
 }
 async function refresh() {
-  if (MODE !== 'cloud' || !auth.key || syncing) return false;
+  if (MODE !== 'cloud' || !auth.token || syncing) return false;
   let res;
   try { res = await api('GET', 'trips'); } catch (e) { setStatus('offline'); return false; }
-  if (res.status === 401) { signOut('That passcode no longer works'); return false; }
+  if (res.status === 401) { signOut('Your session expired \u2014 sign in again'); return false; }
   if (!res.ok) { setStatus('offline'); return false; }
-  const { trips } = await res.json();
+  const { trips, members } = await res.json();
+  if (Array.isArray(members) && members.length) MEMBERS = members.map(m => ({ id: m.id, email: m.email || '', name: m.name || nameFromEmail(m.email) || 'Someone', initial: initialOf(m.name || m.email) }));
+  if (auth.user) { const mine = MEMBERS.find(m => m.id === auth.user.id); if (mine && mine.name) auth.user.name = mine.name; }
   let changed = false; const seen = new Set();
   trips.forEach(row => {
     seen.add(row.id);
@@ -274,7 +282,7 @@ async function refresh() {
   });
   const before = db.trips.length; db.trips = db.trips.filter(t => seen.has(t.id) || dirty.has(t.id)); if (db.trips.length !== before) changed = true;
   if (changed) { persist(); rerender(); }
-  lastSync = Date.now(); setStatus('synced');
+  lastSync = Date.now(); persist(); setStatus('synced');
   return true;
 }
 // three-way merge: our edits since the last sync win for the fields we touched; everything else comes from the server
@@ -315,48 +323,156 @@ function setStatus(s) {
   $$('[data-sync]').forEach(el => el.textContent = txt);
   $$('[data-sync-badge]').forEach(el => { el.textContent = s === 'offline' ? 'Offline' : 'Saving…'; el.classList.toggle('hidden', !(MODE === 'cloud' && s !== 'synced')); });
 }
-function seedIfEmpty() { if (MODE === 'cloud' && !db.trips.length) { db.trips = structuredClone(SEED_TRIPS); db.trips.forEach(t => save(t.id)); } }
+function seedIfEmpty() { if (MODE === 'cloud' && !db.trips.length) { db.trips = structuredClone(SEED_TRIPS); db.trips.forEach(t => { t.access = Object.fromEntries([...EVERYONE(), me()].filter(Boolean).map(id => [id, 'edit'])); save(t.id); }); } }
 async function detectMode() {
   try {
     const r = await fetch(`${API}/trips`, { cache: 'no-store' });
-    const isJson = (r.headers.get('content-type') || '').includes('application/json');
-    if (!isJson) return 'local';
-    if (r.status === 500) { setupError = (await r.json()).error || 'The server is not configured yet.'; return 'cloud'; }
-    return r.status === 401 || r.status === 200 ? 'cloud' : 'local';
+    if (!(r.headers.get('content-type') || '').includes('application/json')) return 'local';
+    if (r.status === 500) setupError = (await r.json()).error || 'The server is not configured yet.';
+    else if (r.status !== 401 && r.status !== 200) return 'local';
   } catch (e) { return 'local'; }
+  try {
+    const s = await fetch(`${ID}/settings`, { cache: 'no-store' });
+    if (s.ok && (s.headers.get('content-type') || '').includes('json')) idSettings = await s.json();
+    else if (!setupError) setupError = 'Sign-in isn\u2019t switched on yet. In Netlify, open Project configuration \u2192 Identity, enable it, then reload.';
+  } catch (e) {}
+  return 'cloud';
 }
 function registerSW() { if (MODE === 'cloud' && !FRAME && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {}); }
 
-// ---------- gate ----------
-function openGate({ whoOnly = false } = {}) {
-  const g = $('#gate'); g.classList.remove('hidden');
-  g.innerHTML = `<form data-gate class="glass glass-strong animate-rise w-full max-w-sm rounded-[32px] p-6">
-    <div class="flex items-center gap-2.5"><span class="size-9 grid place-items-center rounded-xl bg-accent text-white">${ICON.pin}</span><span class="text-[22px] font-bold tracking-tight">DocTravels</span></div>
-    <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">${whoOnly ? 'Who is using this phone? Notes and ratings are signed with this name.' : 'The family trip planner. Enter the passcode once to set up this device.'}</p>
-    ${whoOnly ? '' : `<label class="mt-5 block"><span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Family passcode</span><input name="key" type="password" required autofocus autocomplete="current-password" class="mt-1 h-12 w-full rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 text-[15px] outline-none ring-accent/40 transition focus:ring-2"></label>`}
-    <div class="mt-4"><span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">I am</span>
-      <div class="mt-1.5 grid grid-cols-2 gap-2">${MEMBERS.map((m, i) => `<label class="flex h-12 cursor-pointer items-center gap-2.5 rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 ring-accent transition has-[:checked]:bg-accent/10 has-[:checked]:ring-2"><input type="radio" name="me" value="${esc(m.name)}" ${m.name === me() ? 'checked' : ''} class="sr-only">${avatar(m, i, 'size-7 text-[11px]')}<span class="text-sm font-medium">${esc(m.name)}</span></label>`).join('')}</div></div>
-    <p data-gate-err class="mt-3 ${setupError ? '' : 'hidden'} text-sm text-red-600 dark:text-red-400">${esc(setupError)}</p>
-    <button class="mt-5 h-12 w-full rounded-full bg-accent font-semibold text-white transition active:scale-[.985] disabled:opacity-60">Continue</button>
-  </form>`;
+// ---------- sign in (Netlify Identity: email + password) ----------
+const ID = '/.netlify/identity';
+let idSettings = null, gateData = {};
+const DEMO_MEMBERS = [{ id: 'demo-k', name: 'K', initial: 'K' }, { id: 'demo-e', name: 'E', initial: 'E' }, { id: 'demo-n', name: 'N', initial: 'N' }];
+const initialOf = n => (String(n || '').trim()[0] || '?').toUpperCase();
+const nameFromEmail = e => String(e || '').split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+const userOf = u => { const m = u.user_metadata || {}; return { id: u.id, email: u.email || '', name: String(m.full_name || m.name || nameFromEmail(u.email) || 'Someone').trim() }; };
+function idError(j, status) {
+  const m = String(j.error_description || j.msg || j.error || '');
+  if (status === 429) return 'Too many tries \u2014 wait a minute and try again.';
+  if (/invalid password|no user found|password invalid|invalid login|invalid_grant/i.test(m)) return 'That email and password don\u2019t match.';
+  if (/not confirmed/i.test(m)) return 'Confirm your email first \u2014 the link is in your inbox.';
+  if (/already (been )?registered/i.test(m)) return 'There\u2019s already an account for that email \u2014 sign in instead.';
+  if (/signups? not allowed|signup is disabled/i.test(m)) return 'New accounts are by invitation only.';
+  if (/password.*(least|short)/i.test(m)) return 'Use a password with at least 6 characters.';
+  if (/token|expired/i.test(m)) return 'That link has expired or was already used. Request a new one.';
+  return m || 'Something went wrong. Try again.';
 }
+async function idReq(method, path, body, { form = false, token = '' } = {}) {
+  const headers = { 'content-type': form ? 'application/x-www-form-urlencoded' : 'application/json' };
+  if (token) headers.authorization = 'Bearer ' + token;
+  const r = await fetch(ID + path, { method, headers, body: body == null ? undefined : form ? new URLSearchParams(body) : JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(idError(j, r.status));
+  return j;
+}
+async function setSession(tok) {
+  auth.token = tok.access_token; auth.refresh = tok.refresh_token || ''; auth.exp = Date.now() + ((tok.expires_in || 3600) - 90) * 1000;
+  auth.user = userOf(await idReq('GET', '/user', null, { token: auth.token })); auth.demo = false; persist();
+}
+async function refreshToken() {
+  if (!auth.refresh) return false;
+  try {
+    const j = await idReq('POST', '/token', { grant_type: 'refresh_token', refresh_token: auth.refresh }, { form: true });
+    auth.token = j.access_token; if (j.refresh_token) auth.refresh = j.refresh_token; auth.exp = Date.now() + ((j.expires_in || 3600) - 90) * 1000; persist(); return true;
+  } catch (e) { return e instanceof TypeError ? 'offline' : false; }
+}
+const ensureToken = () => !auth.token ? false : auth.exp > Date.now() ? true : refreshToken();
+// every API call carries the Identity token; an expired one is refreshed first (and once more on a 401)
+async function api(method, path, body, retry = true) {
+  if (MODE === 'cloud') { const ok = await ensureToken(); if (ok === 'offline') throw new Error('offline'); }
+  const r = await fetch(`${API}/${path}`, { method, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + auth.token }, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+  if (r.status === 401 && retry && auth.refresh) { const rt = await refreshToken(); if (rt === true) return api(method, path, body, false); if (rt === 'offline') throw new Error('offline'); }
+  return r;
+}
+// email links (invite, password reset, confirmation) land on the site root with a token in the hash
+function authHash() { const p = new URLSearchParams(location.hash.slice(1)); for (const k of ['invite_token', 'recovery_token', 'confirmation_token']) if (p.get(k)) return { type: k.slice(0, -6), token: p.get(k) }; return null; }
+async function handleAuthHash(h) {
+  history.replaceState(null, '', location.pathname + location.search);
+  try {
+    if (h.type === 'invite') { openGate('invite', { token: h.token }); return; }
+    if (h.type === 'recovery') { await setSession(await idReq('POST', '/verify', { type: 'recovery', token: h.token })); openGate('recover'); return; }
+    await setSession(await idReq('POST', '/verify', { type: 'signup', token: h.token })); closeGate(); afterLogin(); toast('Email confirmed \u2014 welcome');
+  } catch (e) { openGate('signin', { error: e.message }); }
+}
+
+const GATE = {
+  signin: { h: 'Sign in', cta: 'Sign in', busy: 'Signing in\u2026', icon: 'login' },
+  forgot: { h: 'Reset password', sub: 'Enter your email and we\u2019ll send a link to choose a new one.', cta: 'Send link', busy: 'Sending\u2026', back: 'signin' },
+  sent: { h: 'Check your email', cta: 'Back to sign in' },
+  recover: { h: 'New password', cta: 'Save and continue', busy: 'Saving\u2026' },
+  invite: { h: 'Create your account', sub: 'You\u2019ve been invited to the family trip planner.', cta: 'Join', busy: 'Setting up\u2026', icon: 'login' },
+  signup: { h: 'Create account', cta: 'Create account', busy: 'Creating\u2026', back: 'signin' },
+  confirm: { h: 'Confirm your email', cta: 'Back to sign in' },
+};
+function openGate(mode = 'signin', data = {}) {
+  gateData = data; const v = GATE[mode] || GATE.signin, g = $('#gate'); g.classList.remove('hidden');
+  const inp = 'h-14 w-full rounded-full border border-black/10 bg-white/75 px-6 text-[17px] text-zinc-900 placeholder:text-zinc-500 outline-none transition focus:border-accent/70 focus:bg-white focus:ring-4 focus:ring-accent/10 dark:border-white/10 dark:bg-white/10 dark:text-white dark:placeholder:text-zinc-400 dark:focus:bg-white/15';
+  const field = (name, type, label, extra = '') => `<label class="block"><span class="sr-only">${label}</span><input name="${name}" type="${type}" placeholder="${label}" ${extra} class="${inp}"></label>`;
+  const pw = (label, extra) => `<label class="relative block"><span class="sr-only">${label}</span><input name="password" type="password" placeholder="${label}" ${extra} class="${inp} pr-14"><button type="button" data-peek aria-label="Show password" class="absolute right-2 top-1/2 size-10 -translate-y-1/2 grid place-items-center rounded-full text-zinc-500 transition hover:bg-black/5 dark:text-zinc-400 dark:hover:bg-white/10">${ICON.eyeOff}</button></label>`;
+  const email = (extra = '') => field('email', 'email', 'Email', `required autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" ${extra}`);
+  const name = () => field('name', 'text', 'Your first name', 'required autofocus autocomplete="given-name" maxlength="40"');
+  const body = {
+    signin: `${email('autofocus')}${pw('Password', 'required autocomplete="current-password"')}<button type="button" data-gate-to="forgot" class="self-start px-6 py-1 text-[15px] font-medium text-accent">Forgot password?</button>`,
+    forgot: email('autofocus'),
+    recover: pw('New password', 'required autofocus autocomplete="new-password" minlength="6"'),
+    invite: name() + pw('Choose a password', 'required autocomplete="new-password" minlength="6"'),
+    signup: name() + email() + pw('Choose a password', 'required autocomplete="new-password" minlength="6"'),
+  }[mode] || '';
+  const strong = s => `<b class="font-semibold text-zinc-900 dark:text-white">${esc(s)}</b>`;
+  const sub = mode === 'sent' ? `A reset link is on its way to ${strong(data.email)}. Open it on this device to choose a new password.` : mode === 'confirm' ? `We sent a link to ${strong(data.email)}. Open it to finish setting up your account.` : mode === 'recover' ? `Signed in as ${strong(auth.user ? auth.user.email : '')}. Choose a new password for next time.` : v.sub || '';
+  const err = data.error || (mode === 'signin' ? setupError : '');
+  const canSignup = mode === 'signin' && idSettings && !idSettings.disable_signup;
+  const navBtn = 'flex h-10 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium text-zinc-700 transition hover:bg-black/5 active:scale-95 dark:text-zinc-200 dark:hover:bg-white/10';
+  g.innerHTML = `<div class="flex min-h-full flex-col px-6 lg:px-10" style="padding-top:calc(var(--sat) + 16px);padding-bottom:calc(var(--sab) + 18px)">
+    <header class="flex h-12 items-center justify-between">
+      <div class="flex items-center gap-2.5"><span class="size-8 grid place-items-center rounded-[10px] bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,.35)]">${ICON.pin}</span><span class="text-[19px] font-bold tracking-tight">DocTravels</span></div>
+      ${canSignup ? `<button type="button" data-gate-to="signup" class="${navBtn}">${ICON.user}Create account</button>` : v.back ? `<button type="button" data-gate-to="${v.back}" class="${navBtn} -mr-2">${ICON.back}Sign in</button>` : ''}
+    </header>
+    <main class="mx-auto flex w-full max-w-[440px] flex-1 flex-col justify-center py-10">
+      <form data-gate data-mode="${mode}" class="animate-rise flex flex-col gap-3">
+        <h1 class="text-[44px] font-medium leading-[1.02] tracking-[-0.035em] text-zinc-900 dark:text-white lg:text-[56px]">${v.h}</h1>
+        ${sub ? `<p class="mb-3 text-[15px] leading-relaxed text-zinc-600 dark:text-zinc-300">${sub}</p>` : '<div class="h-3"></div>'}
+        ${body}
+        <p data-gate-err class="${err ? '' : 'hidden'} px-6 text-sm font-medium text-red-600 dark:text-red-400">${esc(err)}</p>
+        <button type="submit" class="mt-3 flex h-14 w-full items-center justify-center gap-2.5 rounded-full text-[17px] font-semibold text-white transition active:scale-[.985] disabled:opacity-60" style="background:linear-gradient(90deg,#15938A 0%,#0F766E 55%,#0A5F59 100%);box-shadow:0 16px 32px -12px rgba(15,118,110,.6),inset 0 1px 0 rgba(255,255,255,.28)">${v.icon ? ICON[v.icon] : ''}<span>${v.cta}</span></button>
+      </form>
+    </main>
+    <footer class="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400"><span>\u00a9 ${new Date().getFullYear()} The Dockerys</span>${MODE === 'local' ? '<span class="rounded-full bg-black/[.06] px-2.5 py-1 font-medium dark:bg-white/10">Preview \u00b7 any email signs in</span>' : ''}</footer>
+  </div>`;
+  const f = g.querySelector('[autofocus]'); if (f && !FRAME) setTimeout(() => f.focus(), 350);
+}
+const closeGate = () => { const g = $('#gate'); g.classList.add('hidden'); g.innerHTML = ''; };
 async function submitGate(form) {
-  const f = Object.fromEntries(new FormData(form).entries());
-  auth.me = f.me || me();
-  if (f.key !== undefined) {
-    const btn = form.querySelector('button'); btn.disabled = true; btn.textContent = 'Checking…';
-    const prev = auth.key; auth.key = f.key.trim();
-    let r = null; try { r = await api('GET', 'trips'); } catch (e) {}
-    if (!r || !r.ok) {
-      auth.key = prev; btn.disabled = false; btn.textContent = 'Continue';
-      let msg = 'That passcode didn\u2019t work.';
-      if (!r) msg = 'You\u2019re offline — connect once to set up this device.';
-      else if (r.status !== 401) { try { msg = (await r.json()).error || msg; } catch (e) {} }
-      const err = $('[data-gate-err]'); err.textContent = msg; err.classList.remove('hidden'); form.classList.add('animate-shake'); return;
+  const mode = form.dataset.mode, v = GATE[mode] || GATE.signin, f = Object.fromEntries(new FormData(form).entries());
+  if (mode === 'sent' || mode === 'confirm') { openGate('signin'); return; }
+  const btn = form.querySelector('button[type="submit"]'), label = btn.querySelector('span');
+  const fail = msg => { btn.disabled = false; label.textContent = v.cta; const err = $('[data-gate-err]'); err.textContent = msg; err.classList.remove('hidden'); form.classList.remove('animate-shake'); void form.offsetWidth; form.classList.add('animate-shake'); };
+  btn.disabled = true; label.textContent = v.busy || v.cta;
+  const email = (f.email || '').trim().toLowerCase(), name = (f.name || '').trim();
+  try {
+    if (MODE === 'local') {
+      await new Promise(r => setTimeout(r, 450));
+      if (mode === 'forgot') { openGate('sent', { email }); return; }
+      const nm = name || nameFromEmail(email) || 'You';
+      auth.user = { id: 'demo', email: email || 'you@example.com', name: nm }; auth.demo = true; auth.token = '';
+      MEMBERS = [{ id: 'demo', email: auth.user.email, name: nm, initial: initialOf(nm) }, ...DEMO_MEMBERS]; persist();
+      closeGate(); renderDash(); restoreView(); setStatus('local'); return;
     }
-  }
-  persist(); $('#gate').classList.add('hidden'); $('#gate').innerHTML = '';
-  afterLogin();
+    if (!navigator.onLine) throw new Error('You\u2019re offline. Connect to sign in.');
+    if (mode === 'signin') { await setSession(await idReq('POST', '/token', { grant_type: 'password', username: email, password: f.password }, { form: true })); closeGate(); afterLogin(); }
+    else if (mode === 'forgot') { await idReq('POST', '/recover', { email }); openGate('sent', { email }); }
+    else if (mode === 'recover') { await idReq('PUT', '/user', { password: f.password }, { token: auth.token }); closeGate(); afterLogin(); toast('Password updated'); }
+    else if (mode === 'invite') {
+      await setSession(await idReq('POST', '/verify', { type: 'signup', token: gateData.token, password: f.password }));
+      if (name) { await idReq('PUT', '/user', { data: { full_name: name } }, { token: auth.token }).catch(() => {}); auth.user.name = name; persist(); }
+      closeGate(); afterLogin();
+    } else if (mode === 'signup') {
+      const u = await idReq('POST', '/signup', { email, password: f.password, data: { full_name: name } });
+      if (u.confirmed_at || (idSettings && idSettings.autoconfirm)) { await setSession(await idReq('POST', '/token', { grant_type: 'password', username: email, password: f.password }, { form: true })); closeGate(); afterLogin(); }
+      else openGate('confirm', { email });
+    }
+  } catch (e) { fail(e instanceof TypeError ? 'Couldn\u2019t reach the sign-in service. Check your connection.' : e.message); }
 }
 async function afterLogin() {
   loading = !db.trips.length; renderDash(); registerSW();
@@ -364,10 +480,13 @@ async function afterLogin() {
   loading = false; renderDash();
   if (ui.view === 'trip') restoreView();
 }
-function signOut(msg) {
-  auth.key = ''; persist(); closeModal();
-  if (ui.view === 'trip') closeTrip();
-  openGate(); if (msg) toast(msg);
+async function signOut(msg) {
+  closeModal(); if (ui.view === 'trip') closeTrip();
+  const tok = auth.token, cloud = MODE === 'cloud';
+  if (cloud && dirty.size && navigator.onLine) { try { await sync(); } catch (e) {} }
+  Object.assign(auth, { token: '', refresh: '', exp: 0, user: null, demo: false });
+  if (cloud) { db.trips = []; dirty.clear(); Object.keys(meta).forEach(k => delete meta[k]); if (tok) fetch(ID + '/logout', { method: 'POST', headers: { authorization: 'Bearer ' + tok } }).catch(() => {}); }
+  persist(); renderDash(); openGate('signin', msg ? { error: msg } : {});
 }
 setInterval(() => { if (!document.hidden) refresh(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); if (dirty.size) scheduleSync(100); } });
@@ -402,9 +521,9 @@ function linkLabel(url, fallback) {
 }
 
 // ---------- dashboard ----------
-const avatar = (m, i, cls = 'size-7 text-[11px]', ring = 'ring-white dark:ring-zinc-800') => `<span class="${cls} grid place-items-center rounded-full font-semibold ring-2 ${ring} ${m.name === me() ? 'bg-accent text-white' : 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100'}">${m.initial}</span>`;
+const avatar = (m, i, cls = 'size-7 text-[11px]', ring = 'ring-white dark:ring-zinc-800') => `<span class="${cls} grid place-items-center rounded-full font-semibold ring-2 ${ring} ${m.id === me() ? 'bg-accent text-white' : 'bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100'}">${m.initial}</span>`;
 // who's on a trip, as an overlapping stack; past 4 people the tail collapses to +N
-const stack = (t, cls = 'size-6 text-[10px]', ring = 'ring-white dark:ring-zinc-900', gap = '-space-x-1.5') => { const ms = peopleOf(t), show = ms.length > 4 ? ms.slice(0, 3) : ms, more = ms.length - show.length; return `<span class="flex shrink-0 ${gap}">${show.map((m, i) => avatar(m, i, cls + (roleOf(t, m.name) === 'view' ? ' opacity-60' : ''), ring)).join('')}${more ? `<span class="${cls} grid place-items-center rounded-full font-semibold ring-2 ${ring} bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200">+${more}</span>` : ''}</span>`; };
+const stack = (t, cls = 'size-6 text-[10px]', ring = 'ring-white dark:ring-zinc-900', gap = '-space-x-1.5') => { const ms = peopleOf(t), show = ms.length > 4 ? ms.slice(0, 3) : ms, more = ms.length - show.length; return `<span class="flex shrink-0 ${gap}">${show.map((m, i) => avatar(m, i, cls + (roleOf(t, m.id) === 'view' ? ' opacity-60' : ''), ring)).join('')}${more ? `<span class="${cls} grid place-items-center rounded-full font-semibold ring-2 ${ring} bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200">+${more}</span>` : ''}</span>`; };
 const tripStats = t => { const places = t.entries.length, notes = t.entries.reduce((n, e) => n + (e.notes || []).length, 0); return `${canEdit(t) ? '' : 'View only · '}${t.cities.length} ${t.cities.length === 1 ? 'city' : 'cities'} · ${places} places · ${notes} notes`; };
 const cover = (t, cls) => { const src = coverOf(t); return `<div class="${cls} relative overflow-hidden ${src ? 'bg-zinc-200 dark:bg-zinc-800' : 'stripes bg-accent-deep'}">${src ? `<img src="${esc(src)}" alt="" class="absolute inset-0 size-full object-cover">` : `<span class="absolute -bottom-3 -right-1 text-[96px] font-semibold leading-none text-white/15">${esc((t.name || '?')[0])}</span>`}</div>`; };
 
@@ -425,7 +544,7 @@ function renderDash() {
   <div class="mx-auto max-w-2xl px-4 pb-16" style="padding-top:calc(var(--sat) + 14px)">
     <header class="animate-fade flex items-center justify-between pl-1">
       <div class="flex items-center gap-2.5"><span class="size-8 grid place-items-center rounded-[10px] bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,.35)]">${ICON.pin}</span><span class="text-[19px] font-bold tracking-tight">DocTravels</span></div>
-      <button data-act="account" class="glass flex items-center -space-x-2 rounded-full p-1 transition active:scale-95">${MEMBERS.map((m, i) => avatar(m, i, 'size-7 text-[11px]', 'ring-white dark:ring-zinc-800')).join('')}</button>
+      <button data-act="account" class="glass flex items-center -space-x-2 rounded-full p-1 transition active:scale-95">${(MEMBERS.length ? MEMBERS : [meMember()]).slice(0, 5).map((m, i) => avatar(m, i, 'size-7 text-[11px]', 'ring-white dark:ring-zinc-800')).join('')}</button>
     </header>
     ${next ? `
     <button data-open="${next.id}" class="animate-rise relative mt-5 block w-full overflow-hidden rounded-[32px] text-left shadow-[0_30px_60px_-24px_rgba(0,0,0,.45)] transition active:scale-[.99]" style="animation-delay:60ms">
@@ -835,8 +954,8 @@ function savePlace(form, editId) {
   const t = T(); let e;
   if (editId) { e = entryById(editId); Object.assign(e, { name: f.name.trim(), cityId: f.cityId, cat: f.cat, date: f.date, time: f.time, lat: f.lat, lng: f.lng, address: f.address.trim(), cost: f.cost.trim(), conf: f.conf.trim(), links }); }
   else {
-    e = E(f.cityId, f.date, f.time, f.name.trim(), f.cat, f.lat, f.lng, { address: f.address.trim(), cost: f.cost.trim(), conf: f.conf.trim(), links, by: me() });
-    if (f.note && f.note.trim()) e.notes.push({ id: uid(), date: todayISO(), by: me(), text: f.note.trim() });
+    e = E(f.cityId, f.date, f.time, f.name.trim(), f.cat, f.lat, f.lng, { address: f.address.trim(), cost: f.cost.trim(), conf: f.conf.trim(), links, by: myName() });
+    if (f.note && f.note.trim()) e.notes.push({ id: uid(), date: todayISO(), by: myName(), text: f.note.trim() });
     t.entries.push(e);
   }
   const city = t.cities.find(c => c.id === e.cityId); if (!city.dates.includes(e.date)) { city.dates.push(e.date); city.dates.sort(); }
@@ -846,7 +965,7 @@ function savePlace(form, editId) {
   toast(editId ? 'Saved' : `Added to ${fmtDate(e.date, {weekday:'long'})}`);
 }
 function openNewTrip() {
-  tripDraft = { access: Object.fromEntries(EVERYONE().map(n => [n, 'edit'])), cover: '' };
+  tripDraft = { access: Object.fromEntries([...EVERYONE(), me()].filter(Boolean).map(n => [n, 'edit'])), cover: '' };
   openModal(`${modalHead('Start a trip')}
     <form data-tripform class="flex flex-col gap-3">
       ${field('name', 'Trip name', '', 'required autofocus autocomplete="off" placeholder="Italy 2027"')}
@@ -876,13 +995,15 @@ async function createTrip(form) {
 }
 function openAccount() {
   const seg = (name, val, opts) => `<div class="flex rounded-full bg-black/[.05] dark:bg-white/[.08] p-1">${opts.map(([v, l]) => `<button data-setting="${name}" data-value="${v}" class="h-9 flex-1 rounded-full text-sm font-medium transition-all duration-300 ${v === val ? 'lens text-zinc-900 dark:text-white' : 'text-zinc-500'}">${l}</button>`).join('')}</div>`;
-  openModal(`${modalHead('The Dockerys')}
-    <div class="flex items-center gap-3"><div class="flex -space-x-2">${MEMBERS.map((m, i) => avatar(m, i, 'size-9 text-sm')).join('')}</div><p class="text-sm text-zinc-500 dark:text-zinc-400">You\u2019re <b class="font-semibold text-zinc-900 dark:text-white">${esc(me())}</b> on this device · each trip sets who can see or edit it</p></div>
+  const others = MEMBERS.filter(m => m.id !== me());
+  openModal(`${modalHead('Account')}
+    <div class="flex items-center gap-3">${avatar(meMember(), 0, 'size-11 text-[15px]', 'ring-transparent')}<div class="min-w-0 flex-1"><p class="truncate text-[16px] font-semibold">${esc(myName())}</p><p class="truncate text-sm text-zinc-500 dark:text-zinc-400">${esc((auth.user && auth.user.email) || '')}</p></div></div>
+    <div class="mt-4 flex items-center gap-3 rounded-2xl bg-black/[.04] dark:bg-white/[.06] px-3.5 py-3">${others.length ? `<div class="flex shrink-0 -space-x-2">${others.slice(0, 5).map((m, i) => avatar(m, i, 'size-7 text-[11px]', 'ring-white dark:ring-zinc-800')).join('')}</div>` : ''}<p class="text-xs leading-snug text-zinc-500 dark:text-zinc-400">${others.length ? `${others.length} ${others.length === 1 ? 'other has' : 'others have'} signed in.` : 'Nobody else has signed in yet.'} Each trip sets who can see or edit it.</p></div>
     <div class="mt-5 flex flex-col gap-4">
       <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Appearance</div>${seg('appearance', db.settings.appearance, [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']])}</div>
       <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Map</div>${seg('mapType', db.settings.mapType, [['satellite', 'Satellite'], ['standard', 'Standard']])}</div>
     </div>
-    <div class="mt-6 flex items-center justify-between text-sm"><button data-act="switch" class="font-medium text-accent">Switch traveler</button>${MODE === 'cloud' ? `<button data-act="signout" class="font-medium text-red-600 dark:text-red-400">Sign out</button>` : `<button data-act="reset" class="font-medium text-zinc-500 hover:text-accent">Reset preview data</button>`}</div>
+    <div class="mt-6 flex items-center justify-between text-sm">${MODE === 'cloud' ? '<span></span>' : `<button data-act="reset" class="font-medium text-zinc-500 hover:text-accent">Reset preview data</button>`}<button data-act="signout" class="font-medium text-red-600 dark:text-red-400">Sign out</button></div>
     <p data-sync class="mt-3 text-xs text-zinc-400"></p>`);
   setStatus(status);
 }
@@ -891,12 +1012,12 @@ function openAccount() {
 let tripDraft = { access: {}, cover: '' };
 const ROLE_HINT = `<p class="mt-2 text-xs text-zinc-400">View can see everything but change nothing. Hidden means the trip doesn\u2019t appear for that person.</p>`;
 const roleSeg = name => `<div class="flex shrink-0 rounded-full bg-black/[.05] dark:bg-white/[.08] p-1">${ROLES.map(([v, l]) => `<button type="button" data-role="${esc(name)}" data-value="${v}" class="h-9 rounded-full px-2.5 text-[13px] font-medium transition-all duration-300 ${(tripDraft.access[name] || 'none') === v ? 'lens text-zinc-900 dark:text-white' : 'text-zinc-500'}">${l}</button>`).join('')}</div>`;
-const personRow = (m, i, right) => `<div class="flex items-center gap-3">${avatar(m, i, 'size-8 text-[11px]', 'ring-transparent')}<span class="min-w-0 flex-1 truncate text-sm font-medium">${esc(m.name)}${m.name === me() ? '<span class="ml-1.5 font-normal text-zinc-400">you</span>' : ''}</span>${right}</div>`;
-const peopleRows = () => `<div class="flex flex-col gap-2">${MEMBERS.map((m, i) => personRow(m, i, roleSeg(m.name))).join('')}</div>`;
+const personRow = (m, i, right) => `<div class="flex items-center gap-3">${avatar(m, i, 'size-8 text-[11px]', 'ring-transparent')}<span class="min-w-0 flex-1 truncate text-sm font-medium">${esc(m.name)}${m.id === me() ? '<span class="ml-1.5 font-normal text-zinc-400">you</span>' : ''}</span>${right}</div>`;
+const peopleRows = () => `<div class="flex flex-col gap-2">${(MEMBERS.length ? MEMBERS : [meMember()]).map((m, i) => personRow(m, i, roleSeg(m.id))).join('')}</div>${MEMBERS.length < 2 ? '<p class="mt-2 text-xs text-zinc-400">Family members appear here after their first sign-in.</p>' : ''}`;
 const dayCount = (a, b) => { const n = a && b && b >= a ? datesBetween(a, b).length : 0; return n ? `${n} ${n === 1 ? 'day' : 'days'}` : 'Pick both dates'; };
 const coverBox = () => { const name = ($('[data-edittripform] input[name="name"]') || {}).value || T().name; return `<div data-coverbox class="relative">${cover({ id: '', name, cover: tripDraft.cover }, 'h-40 rounded-[22px]')}<div class="absolute inset-x-3 bottom-3 flex justify-end gap-2"><label class="inline-flex h-9 cursor-pointer items-center rounded-full bg-white/90 dark:bg-zinc-900/90 px-3.5 text-[13px] font-medium backdrop-blur shadow transition active:scale-95">${tripDraft.cover ? 'Change photo' : 'Add a photo'}<input type="file" accept="image/*" data-cover class="hidden"></label>${tripDraft.cover ? `<button type="button" data-act="removecover" class="h-9 rounded-full bg-white/90 dark:bg-zinc-900/90 px-3.5 text-[13px] font-medium text-red-600 dark:text-red-400 backdrop-blur shadow transition active:scale-95">Remove</button>` : ''}</div></div>`; };
 function draftAccess() {
-  const access = {}; EVERYONE().forEach(n => { const r = tripDraft.access[n]; if (r && r !== 'none') access[n] = r; });
+  const access = {}; [...new Set([...EVERYONE(), me()])].filter(Boolean).forEach(n => { const r = tripDraft.access[n]; if (r && r !== 'none') access[n] = r; });
   if (!Object.values(access).includes('edit')) { toast('Someone has to be able to edit'); return null; }
   const mine = access[me()];
   if (mine !== 'edit' && !confirm(mine === 'view' ? 'You\u2019ll be able to see this trip but not change it. Continue?' : 'This trip will be hidden from you. Continue?')) return null;
@@ -1026,8 +1147,8 @@ async function shrink(file, max = 1600, q = .82) {
 }
 const toDataUrl = blob => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
 async function uploadPhoto(file) {
-  const blob = await shrink(file);
-  const r = await fetch(`${API}/photos`, { method: 'POST', headers: { 'content-type': 'image/jpeg', 'x-doctravels-key': auth.key }, body: blob });
+  const blob = await shrink(file); await ensureToken();
+  const r = await fetch(`${API}/photos`, { method: 'POST', headers: { 'content-type': 'image/jpeg', authorization: 'Bearer ' + auth.token }, body: blob });
   if (!r.ok) throw new Error('upload failed');
   const { key } = await r.json(); return `${API}/photos/${key}`;
 }
@@ -1036,6 +1157,8 @@ async function uploadPhoto(file) {
 document.addEventListener('click', ev => {
   const t = ev.target;
   const act = t.closest('[data-act]')?.dataset.act;
+  const gt = t.closest('[data-gate-to]'); if (gt) { openGate(gt.dataset.gateTo, { token: gateData.token }); return; }
+  const pk = t.closest('[data-peek]'); if (pk) { const inp = pk.parentElement.querySelector('input'); const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; pk.innerHTML = show ? ICON.eye : ICON.eyeOff; pk.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); return; }
   const tb = t.closest('[data-tab]'); if (tb) { onTab(tb.dataset.tab); return; }
   const vp = t.closest('[data-view-photo]'); if (vp) { viewPhoto(vp.dataset.viewPhoto); return; }
   const open = t.closest('[data-open]'); if (open) { openTrip(open.dataset.open); return; }
@@ -1077,7 +1200,6 @@ document.addEventListener('click', ev => {
       else { draft = { ...draft, name: '', lat: c.lat, lng: c.lng, address: '' }; openForm(); reverseGeocode(c.lat, c.lng).then(a => { const inp = $('[data-placeform] input[name="address"]'); if (inp && !inp.value) inp.value = a; }); }
       break;
     }
-    case 'switch': closeModal(); openGate({ whoOnly: true }); break;
     case 'signout': if (confirm('Sign out of DocTravels on this device?')) signOut(); break;
     case 'reset': localStorage.removeItem(KEY); location.reload(); break;
   }
@@ -1085,7 +1207,7 @@ document.addEventListener('click', ev => {
 document.addEventListener('submit', ev => {
   const f = ev.target; ev.preventDefault();
   if (f.matches('[data-gate]')) submitGate(f);
-  else if (f.matches('[data-note]')) { if (!canEdit()) { toast('This trip is view only for you'); return; } const text = f.text.value.trim(); if (!text) return; const e = entryById(f.closest('.tile').dataset.id); e.notes.push({ id: uid(), date: todayISO(), by: me(), text }); save(); renderSheet(false); toast('Note saved'); }
+  else if (f.matches('[data-note]')) { if (!canEdit()) { toast('This trip is view only for you'); return; } const text = f.text.value.trim(); if (!text) return; const e = entryById(f.closest('.tile').dataset.id); e.notes.push({ id: uid(), date: todayISO(), by: myName(), text }); save(); renderSheet(false); toast('Note saved'); }
   else if (f.matches('[data-placeform]')) { if (!canEdit()) { toast('This trip is view only for you'); return; } savePlace(f, f.closest('.modal-panel').dataset.edit || null); }
   else if (f.matches('[data-tripform]')) createTrip(f);
   else if (f.matches('[data-edittripform]')) saveTrip(f);
@@ -1110,10 +1232,17 @@ matchMedia('(min-width: 1024px)').addEventListener('change', () => { if (ui.view
 // ---------- boot ----------
 (async function boot() {
   applyAppearance();
-  if (auth.key) { MODE = 'cloud'; renderDash(); restoreView(); afterLogin(); return; }
+  const h = authHash();
+  if (h) { MODE = 'cloud'; renderDash(); await handleAuthHash(h); return; }
+  if (auth.token && auth.user) { MODE = 'cloud'; renderDash(); restoreView(); afterLogin(); return; }
   MODE = await detectMode();
-  if (MODE === 'local') { if (!db.trips.length) db.trips = structuredClone(SEED_TRIPS); db.trips.forEach(t => t.entries.forEach(e => { if (e.photos) e.photos = e.photos.filter(p => !p.startsWith('blob:')); })); renderDash(); restoreView(); setStatus('local'); return; }
-  renderDash(); openGate();
+  if (MODE === 'local') {
+    if (!db.trips.length) db.trips = structuredClone(SEED_TRIPS);
+    db.trips.forEach(t => t.entries.forEach(e => { if (e.photos) e.photos = e.photos.filter(p => !p.startsWith('blob:')); }));
+    if (auth.demo && auth.user) { renderDash(); restoreView(); setStatus('local'); } else { renderDash(); openGate('signin'); }
+    return;
+  }
+  renderDash(); openGate('signin');
 })();
 </script>
 </body>

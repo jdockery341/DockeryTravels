@@ -8,7 +8,7 @@ Everything in this folder is the deployable site. Push it to the root of the `Do
 public/                      the app (index.html), icons, manifest, service worker
 netlify/functions/trips.mjs  GET/PUT trips  →  Netlify Database (Postgres)
 netlify/functions/photos.mjs upload/serve photos  →  Netlify Blobs
-netlify/lib/auth.mjs         family-passcode check used by both functions
+netlify/lib/auth.mjs         verifies the Netlify Identity sign-in on every API call
 netlify/database/migrations/ schema, applied automatically on deploy
 netlify.toml · package.json
 ```
@@ -18,15 +18,16 @@ netlify.toml · package.json
 1. **Push to GitHub.** Copy the contents of this folder to the root of `jdockery341/DockeryTravels` and push to `main`.
 2. **Create the Netlify project.** Netlify → *Add new project* → *Import an existing project* → pick the repo. Build settings are read from `netlify.toml` (publish `public`, no build command). Deploy.
 3. **Database.** Netlify detects `@netlify/database` and provisions a Postgres database on the first deploy, applying `netlify/database/migrations/`. If the project's **Database** tab shows nothing after the deploy, click *Create a database manually* and redeploy once.
-4. **Passcode.** *Project configuration → Environment variables* → add `FAMILY_PASSCODE` (any word or phrase the family will share). Trigger a redeploy so the functions pick it up.
-5. **Open the site on each phone**, enter the passcode once, pick who you are, then *Share → Add to Home Screen* so it launches full-screen like an app.
+4. **Sign-in.** *Project configuration → Identity* → **Enable Identity**. Under *Registration* choose **Invite only**, then *Identity → Users → Invite users* and enter the family's emails. Each person's invite email opens the app's **Create your account** screen (first name + password). Password resets are self-service from the sign-in screen. No environment variables are needed.
+5. **Open the site on each phone**, sign in with email and password, then *Share → Add to Home Screen* so it launches full-screen like an app.
 
 The first device to sign in seeds the database with the Barcelona trip. After that everything lives in Postgres and syncs to every phone within ~30 seconds (immediately when the app is reopened).
 
 ## How data works
 
 - One row per trip in the `trips` table: `id`, `data` (JSONB — name, dates, cover photo, per-person access, cities, days, places, notes, photo URLs), `version`, `updated_at`, `updated_by`.
-- Saves are refused (`403`) when the sender isn't an editor of that trip; the phone undoes the change and reloads the server copy.
+- Who you are comes from your Netlify Identity sign-in; the server reads it from the token on every call, never from the phone. The `members` table lists everyone who has signed in and feeds each trip's People picker.
+- Saves are refused (`403`) when the sender isn't an editor of that trip; the phone undoes the change and reloads the server copy. Trips you're hidden from are never sent to your phone.
 - Every save is a compare-and-set on `version`. If two people edit at once, the second save gets a `409`, the app merges field-by-field (notes and photos are unioned) and retries. Nobody's edit is lost.
 - Offline: edits are kept on the phone and pushed when the connection returns. The app shell is cached by `public/sw.js`; map tiles still need a connection.
 - Photos are downscaled on the phone (max 1600 px JPEG) and stored in the `photos` blob store; the trip only holds their URLs.
@@ -37,15 +38,14 @@ Query the data any time from the Netlify Database tab, e.g. `SELECT data->>'name
 
 ```
 npm install
-cp .env.example .env         # set FAMILY_PASSCODE
-npx netlify-cli dev          # http://localhost:8888
+npx netlify-cli dev          # http://localhost:8888 — functions + database, but Identity sign-in only works on a deploy or Deploy Preview
 ```
 
-Opening `public/index.html` directly (no functions) runs the app in **preview mode**: no passcode, data stays in that browser only.
+Opening `public/index.html` directly (no functions) runs the app in **preview mode**: the sign-in screen accepts any email, and data stays in that browser only.
 
-## Family names
+## Family members
 
-Edit the `MEMBERS` list near the top of `public/index.html` to replace the placeholder initials with real names. Each phone picks its traveler on first launch (changeable under *The Dockerys → Switch traveler*).
+The roster is whoever has signed in. A person's name is the first name they entered when accepting the invite (changeable in Netlify → Identity → Users). Each trip's **People** list shows everyone who has signed in at least once; sign-out and appearance settings live under the avatars at the top of the dashboard.
 
 ## Editing a trip
 
@@ -55,7 +55,7 @@ Open a trip and tap the avatars at the top of the map → **Edit trip**:
 - **Name and dates** — days are trimmed or extended city by city; a place that falls outside the new dates moves to the nearest day (you're asked first).
 - **People** — each family member is **Edit**, **View** or **Hidden** on every trip. Editors plan the trip; viewers see everything (and are told it's view only) but can't add, rate, note or change anything; hidden means the trip doesn't appear for that person. At least one editor is required. The same choices appear when starting a trip (everyone can edit by default).
 
-Trips saved before this existed count as everyone-can-edit. The traveler picker is on the honor system — anyone with the family passcode can pick any name.
+Trips saved before this existed count as everyone-can-edit. Access is tied to each person's sign-in, so nobody can act as someone else.
 
 ## Photos
 

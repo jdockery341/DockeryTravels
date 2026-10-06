@@ -1,9 +1,9 @@
 import { getStore } from '@netlify/blobs';
-import { checkAuth, json } from '../lib/auth.mjs';
+import { requireUser, json } from '../lib/auth.mjs';
 
 export const config = { path: ['/api/photos', '/api/photos/:key'] };
 
-// Photos live in Netlify Blobs. Upload needs the passcode; viewing uses an unguessable key so <img> tags can load them.
+// Photos live in Netlify Blobs. Uploading and deleting need a signed-in user; viewing uses an unguessable key so <img> tags can load them.
 export default async (req, context) => {
   const store = getStore('photos');
   const key = context.params?.key;
@@ -14,7 +14,7 @@ export default async (req, context) => {
     return new Response(res.data, { headers: { 'content-type': res.metadata?.type || 'image/jpeg', 'cache-control': 'private, max-age=31536000, immutable' } });
   }
 
-  const denied = checkAuth(req);
+  const { denied } = await requireUser(req, context);
   if (denied) return denied;
 
   if (req.method === 'POST') {
