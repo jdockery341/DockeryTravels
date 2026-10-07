@@ -13,13 +13,18 @@ git push -u origin main --force   # drop --force if the repo is still empty
 ## New in 1.2
 
 - A trip opens on **today** showing the whole itinerary, day by day, each day header naming its city.
-- The city/day chips are replaced by one **route strip**: `All · Today · one pill per stop` (a city visited twice is two stops) with its days as dots — the ringed dot is today. Tap a stop to filter to it (tap several to combine); tap a day dot, then another, for a date range. `All` clears.
+- The city/day chips are replaced by one **route strip**: `All · Today · one pill per stop` (a city visited twice is two stops) with its days as numbered discs — the ringed one is today. Tap a stop to filter to it (tap several to combine); tap a day number, then another, for a date range. `All` clears.
+- **Edit trip → Cities**: add a city (typed name, located automatically), remove one, and tap a city open to pick the days spent there. A day belongs to one city and its places move with it — so the departure flight can live in Atlanta on Oct 7 while Barcelona starts Oct 8. A place's Day picker now lists every trip day.
 - The map follows the list: whichever day is under the top of the list is the active day (the small chip at the map's bottom-left), and the pins refit to it. Photos are unaffected by the filter.
-- Offline cache bumped to v4 so phones pick up the new build.
+- The map view always uses light glass (the glass is lit by the map behind it), even when the phone is in dark mode; the trip list and sign-in still follow Appearance.
 
 ## Already deployed? (upgrading from 1.1)
 
-Just push: `git add -A && git commit -m "DocTravels 1.2 — route-strip filter" && git push`. No new env vars, no migrations, no Netlify settings. Phones pick up the new build on their next open (cache `doctravels-v4`); a saved "Barcelona" day selection from 1.1 is replaced by today automatically.
+Just push: `git add -A && git commit -m "DocTravels 1.2 — route-strip filter, city editing" && git push`. No new env vars, no migrations, no Netlify settings. Phones pick up the new build on their next open (cache `doctravels-v4`); a saved "Barcelona" day selection from 1.1 is replaced by today automatically.
+
+First thing after deploying: **Edit trip → Add a city → Atlanta → tap day 7 → Save** so the departure flight lives in Atlanta.
+
+- Offline cache bumped to v4 so phones pick up the new build.
 
 ## Netlify (once)
 
@@ -46,4 +51,4 @@ No environment variables are needed. Password resets are self-service from the s
 - `netlify/lib/auth.mjs` — verifies the Identity token on every API call
 - `netlify/database/migrations/` — schema
 
-Known gaps (not blockers): no delete-trip button (the API supports it), cities can't be added or removed after a trip is created, Tailwind compiles in the browser from a CDN.
+Known gaps (not blockers): no delete-trip button (the API supports it), Tailwind compiles in the browser from a CDN.

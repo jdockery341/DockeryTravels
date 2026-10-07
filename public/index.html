@@ -243,7 +243,8 @@ const entryById = id => T().entries.find(e => e.id === id);
 function applyAppearance() {
   const a = db.settings.appearance;
   const dark = a === 'dark' || (a === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.classList.toggle('dark', dark);
+  // glass takes its tint from what's behind it: the map is light, so the trip view stays light glass even in dark mode
+  document.documentElement.classList.toggle('dark', dark && ui.view !== 'trip');
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyAppearance);
 
@@ -313,7 +314,7 @@ function mergeTrip(local, server, base) {
   base = base || server;
   const out = { ...server };
   ['name', 'start', 'end', 'travelers', 'access', 'cover'].forEach(k => { if (JSON.stringify(local[k]) !== JSON.stringify(base[k])) out[k] = local[k]; });
-  out.cities = mergeList(local.cities || [], server.cities || [], base.cities || [], (l, s, b) => ({ ...pickChanged(l, s, b, ['name', 'country', 'center', 'zoom']), dates: [...new Set([...(s.dates || []), ...(l.dates || [])])].sort() }));
+  out.cities = mergeList(local.cities || [], server.cities || [], base.cities || [], (l, s, b) => pickChanged(l, s, b, ['name', 'country', 'center', 'zoom', 'dates']));
   out.entries = mergeList(local.entries || [], server.entries || [], base.entries || [], (l, s, b) => {
     const m = pickChanged(l, s, b, ['name', 'cityId', 'date', 'time', 'cat', 'lat', 'lng', 'address', 'links', 'cost', 'conf', 'rating', 'by']);
     const key = n => n.id || `${n.date}|${n.by}|${n.text}`; const seenN = new Set();
@@ -656,7 +657,7 @@ function openTrip(id, restore = false) {
   ui.view = 'trip'; ui.tripId = id;
   const t = T(); if (!t || !roleOf(t, me())) { ui.view = 'dashboard'; return; }
   if (!restore) { ui.f = { stops: [], from: null, to: null }; ui.day = defaultDay(); ui.selected = null; }
-  normalizeUi(); saveUi();
+  normalizeUi(); saveUi(); applyAppearance();
   const trip = $('#trip'), dash = $('#dash');
   dash.classList.add('hidden');
   trip.classList.remove('hidden'); trip.classList.add('animate-fade');
@@ -670,7 +671,7 @@ function closeTrip() {
   const trip = $('#trip');
   trip.classList.add('transition-opacity', 'duration-300', 'opacity-0');
   setTimeout(() => { trip.classList.add('hidden'); trip.classList.remove('opacity-0', 'transition-opacity', 'duration-300', 'animate-fade'); }, 300);
-  ui.view = 'dashboard'; ui.selected = null; saveUi(); stopLocating();
+  ui.view = 'dashboard'; ui.selected = null; saveUi(); stopLocating(); applyAppearance();
   renderDash(); $('#dash').classList.remove('hidden');
 }
 function restoreView() { if (ui.view === 'trip' && db.trips.find(t => t.id === ui.tripId)) openTrip(ui.tripId, true); else ui.view = 'dashboard'; }
@@ -753,7 +754,7 @@ function stripHtml() {
 function daySection(d, anim) {
   const es = dayEntries(d), today = todayISO(), isT = d === today;
   return `<section data-daysec="${d}">
-    <div class="sticky top-0 z-10 -mx-2.5 flex items-center gap-2 bg-[var(--glass-bg-strong)] px-5 pb-1.5 pt-3.5 backdrop-blur-xl">
+    <div class="sticky top-0 z-10 -mx-2.5 flex items-center gap-2 bg-white/60 px-5 pb-1.5 pt-3.5 backdrop-blur-md dark:bg-zinc-900/60">
       <span class="text-[15px] font-bold tracking-tight ${isT ? 'text-accent' : d < today ? 'text-zinc-500 dark:text-zinc-400' : ''}">${fmtDate(d, {weekday:'short', month:'short', day:'numeric'})}</span>
       ${isT ? '<span class="rounded-full bg-accent px-1.5 py-[3px] text-[10px] font-bold uppercase leading-none tracking-wider text-white">Today</span>' : ''}
       <span class="ml-auto flex min-w-0 items-center gap-1 text-[13px] font-semibold text-zinc-600 dark:text-zinc-300"><span class="shrink-0">${ICON.pinSm.replace('size-3.5', 'size-3')}</span><span class="truncate">${esc(dayCities(d))}</span></span>
@@ -1018,8 +1019,8 @@ function endPinMode() { pinMode = false; $('#crosshair').classList.add('hidden')
 function openForm(editId = null) {
   const t = T(); const d = draft || {};
   const cityOpts = t.cities.map(c => [c.id, c.name]);
-  const cityId = d.cityId || C().id; const city = t.cities.find(c => c.id === cityId) || t.cities[0];
-  const dateOpts = city.dates.map(x => [x, fmtDate(x, {weekday:'short', month:'short', day:'numeric'})]);
+  const cityId = d.cityId || C().id;
+  const dateOpts = tripDates().map(x => [x, fmtDate(x, {weekday:'short', month:'short', day:'numeric'})]);
   const has = pinned(d);
   openModal(`${modalHead(editId ? 'Edit place' : 'New place', editId ? null : 'add')}
     <form data-placeform class="flex flex-col gap-3">
@@ -1050,7 +1051,6 @@ function savePlace(form, editId) {
     if (f.note && f.note.trim()) e.notes.push({ id: uid(), date: todayISO(), by: myName(), text: f.note.trim() });
     t.entries.push(e);
   }
-  const city = t.cities.find(c => c.id === e.cityId); if (!city.dates.includes(e.date)) { city.dates.push(e.date); city.dates.sort(); }
   ui.day = e.date; ui.selected = null; if (!visibleDates().includes(e.date)) ui.f = { stops: [], from: null, to: null }; save();
   closeModal(); renderSheet(false); renderFollow(); updateMarkers();
   setTimeout(() => selectEntry(e.id), 150);
@@ -1118,13 +1118,14 @@ function draftAccess() {
 function openEditTrip() {
   const t = T(); if (!t) return;
   if (!canEdit()) { openTripDetails(t); return; }
-  tripDraft = { access: accessOf(t), cover: coverOf(t) };
+  tripDraft = { access: accessOf(t), cover: coverOf(t), cities: structuredClone(t.cities), openCity: null };
   openModal(`${modalHead('Edit trip')}
     <form data-edittripform class="flex flex-col gap-3">
       ${coverBox()}
       ${field('name', 'Trip name', t.name, 'required autocomplete="off"')}
       <div class="grid grid-cols-2 gap-3">${field('start', 'Starts', t.start, 'type="date" required')}${field('end', 'Ends', t.end, 'type="date" required')}</div>
       <p data-days class="-mt-1 text-xs text-zinc-400">${dayCount(t.start, t.end)}</p>
+      ${citiesBox()}
       <div><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">People</div>${peopleRows()}${ROLE_HINT}</div>
       <button class="mt-1 h-12 rounded-full bg-accent font-semibold text-white transition active:scale-[.985]">Save changes</button>
     </form>`, { wide: true });
@@ -1154,8 +1155,13 @@ function saveTrip(form) {
   if (f.start !== t.start || f.end !== t.end) {
     const outside = t.entries.filter(e => e.date < f.start || e.date > f.end).length;
     if (outside && !confirm(`${outside} ${outside === 1 ? 'place falls' : 'places fall'} outside the new dates and will move to the nearest day. Continue?`)) return;
-    applyDates(t, f.start, f.end);
   }
+  // cities & days from the draft; a day's places follow the day when it moves to another city
+  const was = {}; t.cities.forEach(c => (c.dates || []).forEach(d => { was[d] = c.id; }));
+  t.cities = tripDraft.cities.map(c => ({ ...c, dates: (c.dates || []).slice() }));
+  applyDates(t, f.start, f.end);
+  const now = {}; t.cities.forEach(c => c.dates.forEach(d => { now[d] = c.id; }));
+  t.entries.forEach(e => { const gone = !t.cities.some(c => c.id === e.cityId); if ((gone || e.cityId === was[e.date]) && now[e.date] && now[e.date] !== e.cityId) e.cityId = now[e.date]; });
   Object.assign(t, { name, start: f.start, end: f.end, access, cover: tripDraft.cover || '' }); delete t.travelers;
   save(); closeModal();
   if (!roleOf(t, me())) { closeTrip(); toast('Trip updated · it\u2019s now hidden from you'); return; }
@@ -1168,15 +1174,48 @@ function applyDates(t, start, end) {
   const all = datesBetween(start, end);
   t.entries.forEach(e => { if (e.date < start) e.date = start; else if (e.date > end) e.date = end; });
   t.cities.forEach(c => { c.dates = (c.dates || []).filter(d => d >= start && d <= end); });
-  t.entries.forEach(e => { const c = t.cities.find(x => x.id === e.cityId); if (c && !c.dates.includes(e.date)) c.dates.push(e.date); });
   if (!t.cities.length) t.cities.push({ id: uid(), name: t.name, country: '', center: [20, 0], zoom: 2, dates: [] });
-  const kept = t.cities.filter(c => c.dates.length);
-  if (kept.length) t.cities = kept;
-  else { const per = Math.max(1, Math.ceil(all.length / t.cities.length)); t.cities.forEach((c, i) => { c.dates = all.slice(i * per, (i + 1) * per); if (!c.dates.length) c.dates = [all[all.length - 1]]; }); }
+  if (!t.cities.some(c => c.dates.length)) { const per = Math.max(1, Math.ceil(all.length / t.cities.length)); t.cities.forEach((c, i) => { c.dates = all.slice(i * per, (i + 1) * per); if (!c.dates.length) c.dates = [all[all.length - 1]]; }); }
   const owner = {}; t.cities.forEach(c => c.dates.forEach(d => { owner[d] = c; }));
   let last = t.cities.find(c => c.dates.length) || t.cities[0];
   all.forEach(d => { if (owner[d]) last = owner[d]; else last.dates.push(d); });
   t.cities.forEach(c => c.dates.sort());
+}
+// ---------- cities in the edit sheet: each city owns its days; tap a day to move it, add or remove cities ----------
+const daySummary = ds => { const runs = []; ds.slice().sort().forEach(d => { const r = runs[runs.length - 1]; if (r && nextDay(r[1]) === d) r[1] = d; else runs.push([d, d]); }); return runs.map(([a, b]) => a === b ? fmtDate(a, {month:'short', day:'numeric'}) : rangeShort(a, b)).join(', '); };
+const knownCenter = n => CITY_INDEX[n.toLowerCase()] || CITY_INDEX[Object.keys(CITY_INDEX).find(k => n.toLowerCase().includes(k))];
+function citiesBox() {
+  const form = $('[data-edittripform]'), t = T(), start = form ? form.start.value : t.start, end = form ? form.end.value : t.end;
+  const all = start && end && end >= start ? datesBetween(start, end) : [];
+  const rows = tripDraft.cities.map(c => {
+    const open = tripDraft.openCity === c.id, mine = new Set(c.dates || []);
+    return `<div class="rounded-2xl bg-black/[.04] dark:bg-white/[.06] ${open ? 'pb-3' : ''}">
+      <div class="flex items-center gap-1 pl-4 pr-1.5">
+        <button type="button" data-citytoggle="${c.id}" class="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left">
+          <span class="min-w-0 flex-1"><span class="block truncate text-[15px] font-semibold">${esc(c.name)}</span><span class="block truncate text-[12px] ${mine.size ? 'text-zinc-500 dark:text-zinc-400' : 'text-amber-700 dark:text-amber-400'}">${mine.size ? daySummary([...mine]) : 'No days yet — tap to pick'}</span></span>
+          <span class="shrink-0 text-zinc-400 transition-transform ${open ? 'rotate-180' : ''}">${ICON.chevron}</span>
+        </button>
+        ${tripDraft.cities.length > 1 ? `<button type="button" data-removecity="${c.id}" title="Remove city" class="size-9 shrink-0 grid place-items-center rounded-full text-zinc-400 transition hover:bg-black/[.06] hover:text-red-600 dark:hover:bg-white/10">${ICON.close.replace('size-5', 'size-4')}</button>` : ''}
+      </div>
+      ${open ? `<div class="px-3"><p class="mb-2 text-[11px] text-zinc-500 dark:text-zinc-400">Tap the days spent in ${esc(c.name)} — a day belongs to one city, and its places move with it.</p><div class="flex flex-wrap gap-1.5">${all.map(d => `<button type="button" data-cityday="${d}" data-city="${c.id}" title="${fmtDate(d, {weekday:'short', month:'short', day:'numeric'})}" class="grid size-8 place-items-center rounded-full text-[12px] font-semibold tabular-nums transition active:scale-95 ${mine.has(d) ? 'bg-accent text-white shadow-[0_6px_16px_-6px_rgba(15,118,110,.7)]' : 'bg-black/[.06] text-zinc-700 dark:bg-white/[.1] dark:text-zinc-200'}">${fmtDate(d, {day:'numeric'})}</button>`).join('')}</div></div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div data-citiesbox><div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Cities</div><div class="flex flex-col gap-2">${rows}
+    <div class="flex h-12 items-center gap-2 rounded-2xl bg-black/[.05] dark:bg-white/[.08] pl-4 pr-1.5"><input data-newcity autocomplete="off" enterkeyhint="done" placeholder="Add a city, e.g. Atlanta" class="h-full min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-zinc-400"><button type="button" data-act="addcity" class="h-9 shrink-0 rounded-full bg-zinc-900 px-3.5 text-[13px] font-semibold text-white transition active:scale-95 dark:bg-white dark:text-zinc-900">Add</button></div>
+  </div></div>`;
+}
+function citiesRefresh() { const b = $('[data-citiesbox]'); if (b) b.outerHTML = citiesBox(); }
+function assignDay(cityId, d) { tripDraft.cities.forEach(c => { c.dates = (c.dates || []).filter(x => x !== d); }); const c = tripDraft.cities.find(c => c.id === cityId); if (c) { c.dates.push(d); c.dates.sort(); } citiesRefresh(); }
+function addCity() {
+  const inp = $('[data-newcity]'), name = ((inp && inp.value) || '').trim(); if (!name) { if (inp) inp.focus(); return; }
+  const known = knownCenter(name), c = { id: uid(), name, country: '', center: known || [20, 0], zoom: known ? 13 : 2, dates: [] };
+  tripDraft.cities.push(c); tripDraft.openCity = c.id; citiesRefresh(); geocodeCity(c);
+}
+async function geocodeCity(c) { try { const [p] = await photon(c.name, { limit: 1 }); if (!p) return; const live = db.trips.flatMap(t => t.cities).find(x => x.id === c.id); [c, live].filter(Boolean).forEach(x => { x.center = [p.lat, p.lng]; x.country = p.country || ''; x.zoom = 13; }); if (live) save(db.trips.find(t => t.cities.includes(live)).id); } catch (e) {} }
+function removeCity(id) {
+  const c = tripDraft.cities.find(c => c.id === id); if (!c || tripDraft.cities.length < 2) return;
+  if ((c.dates || []).length && !confirm(`Remove ${c.name}? Its days and places go to the city before it.`)) return;
+  tripDraft.cities = tripDraft.cities.filter(x => x.id !== id); if (tripDraft.openCity === id) tripDraft.openCity = null; citiesRefresh();
 }
 
 // ---------- trip gallery & viewer: every photo on any place, in trip order ----------
@@ -1260,6 +1299,9 @@ document.addEventListener('click', ev => {
   const method = t.closest('[data-method]'); if (method) { ({ search: openSearch, link: openLink, pin: startPinMode, here: useCurrentLocation })[method.dataset.method](); return; }
   const res = t.closest('[data-result]'); if (res) { const p = $('[data-results]')._items[Number(res.dataset.result)]; draft = { ...draft, name: p.name, address: p.address, lat: p.lat, lng: p.lng, cat: p.cat, website: p.website, yelp: p.yelp, cityId: p.cityId || C().id, date: (p.cityId && p.cityId !== C().id) ? T().cities.find(c => c.id === p.cityId).dates[0] : ui.day }; openForm(); return; }
   const role = t.closest('[data-role]'); if (role) { tripDraft.access[role.dataset.role] = role.dataset.value; role.parentElement.outerHTML = roleSeg(role.dataset.role); return; }
+  const cd = t.closest('[data-cityday]'); if (cd) { assignDay(cd.dataset.city, cd.dataset.cityday); return; }
+  const ct = t.closest('[data-citytoggle]'); if (ct) { tripDraft.openCity = tripDraft.openCity === ct.dataset.citytoggle ? null : ct.dataset.citytoggle; citiesRefresh(); return; }
+  const rc = t.closest('[data-removecity]'); if (rc) { removeCity(rc.dataset.removecity); return; }
   const setting = t.closest('[data-setting]'); if (setting) { db.settings[setting.dataset.setting] = setting.dataset.value; saveUi(); applyAppearance(); if (map) setTiles(); openAccount(); return; }
   if (t.closest('[data-close]')) { closeModal(); return; }
   if (!act) return;
@@ -1270,6 +1312,7 @@ document.addEventListener('click', ev => {
     case 'account': openAccount(); break;
     case 'trip': openEditTrip(); break;
     case 'removecover': { tripDraft.cover = ''; const b = $('[data-coverbox]'); if (b) b.outerHTML = coverBox(); break; }
+    case 'addcity': addCity(); break;
     case 'newtrip': openNewTrip(); break;
     case 'add': openAddMethods(); break;
     case 'layers': db.settings.mapType = db.settings.mapType === 'satellite' ? 'standard' : 'satellite'; saveUi(); setTiles(); toast(db.settings.mapType === 'satellite' ? 'Satellite' : 'Standard map'); break;
@@ -1307,14 +1350,14 @@ document.addEventListener('submit', ev => {
 });
 document.addEventListener('input', ev => {
   if (ev.target.matches('[data-search]')) { clearTimeout(searchTimer); const q = ev.target.value; searchTimer = setTimeout(() => runSearch(q), 300); }
-  if (ev.target.matches('[data-edittripform] input[type="date"]')) { const f = ev.target.form, p = $('[data-days]'); if (p) p.textContent = dayCount(f.start.value, f.end.value); }
+  if (ev.target.matches('[data-edittripform] input[type="date"]')) { const f = ev.target.form, p = $('[data-days]'); if (p) p.textContent = dayCount(f.start.value, f.end.value); citiesRefresh(); }
 });
 document.addEventListener('change', ev => {
   if (ev.target.matches('[data-photo]') && ev.target.files[0]) { if (!canEdit()) { toast('This trip is view only for you'); return; } const e = entryById(ev.target.closest('.tile').dataset.id); addPhotos(e, [...ev.target.files]); }
   if (ev.target.matches('[data-cover]') && ev.target.files[0]) setCover(ev.target.files[0]);
-  if (ev.target.matches('[data-placeform] select[name="cityId"]')) { const city = T().cities.find(c => c.id === ev.target.value); const sel = ev.target.form.date; sel.innerHTML = city.dates.map(x => `<option value="${x}">${fmtDate(x, {weekday:'short', month:'short', day:'numeric'})}</option>`).join(''); }
 });
 document.addEventListener('keydown', ev => {
+  if (ev.key === 'Enter' && ev.target.matches && ev.target.matches('[data-newcity]')) { ev.preventDefault(); addCity(); return; }
   if (lbOpen()) { if (ev.key === 'Escape') closeLightbox(); else if (ev.key === 'ArrowLeft') lbStep(-1); else if (ev.key === 'ArrowRight') lbStep(1); return; }
   if (ev.key === 'Escape') { if ($('.modal-panel')) closeModal(); else if (pinMode) { endPinMode(); pinReturn = null; } }
 });
