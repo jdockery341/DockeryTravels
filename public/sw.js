@@ -1,6 +1,6 @@
 // Offline shell: the app and its libraries load from cache when the ship's wifi drops.
 // Trip data and photos are never cached here — the app keeps its own copy in localStorage.
-const CACHE = 'doctravels-v3';
+const CACHE = 'doctravels-v4';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './apple-touch-icon.png'];
 const CDN = /unpkg\.com|cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com/;
 

@@ -1,4 +1,4 @@
-# Release 1.1 — Liquid Glass + email sign-in
+# Release 1.2 — Route-strip itinerary filter
 
 Everything in this folder is the repo root. Unzip, then from inside the folder:
 
@@ -6,9 +6,20 @@ Everything in this folder is the repo root. Unzip, then from inside the folder:
 git init -b main
 git remote add origin https://github.com/jdockery341/DockeryTravels.git
 git add -A
-git commit -m "DocTravels 1.1 — Liquid Glass, Netlify Identity sign-in"
+git commit -m "DocTravels 1.2 — whole-trip itinerary with route-strip filter"
 git push -u origin main --force   # drop --force if the repo is still empty
 ```
+
+## New in 1.2
+
+- A trip opens on **today** showing the whole itinerary, day by day, each day header naming its city.
+- The city/day chips are replaced by one **route strip**: `All · Today · one pill per stop` (a city visited twice is two stops) with its days as dots — the ringed dot is today. Tap a stop to filter to it (tap several to combine); tap a day dot, then another, for a date range. `All` clears.
+- The map follows the list: whichever day is under the top of the list is the active day (the small chip at the map's bottom-left), and the pins refit to it. Photos are unaffected by the filter.
+- Offline cache bumped to v4 so phones pick up the new build.
+
+## Already deployed? (upgrading from 1.1)
+
+Just push: `git add -A && git commit -m "DocTravels 1.2 — route-strip filter" && git push`. No new env vars, no migrations, no Netlify settings. Phones pick up the new build on their next open (cache `doctravels-v4`); a saved "Barcelona" day selection from 1.1 is replaced by today automatically.
 
 ## Netlify (once)
 
@@ -22,13 +33,14 @@ No environment variables are needed. Password resets are self-service from the s
 
 ## Before you tag it done
 
-- Open the live site once on a real iPhone: sign in, check the glass blur in Safari, the home-indicator spacing under the tab bar, and that a trip opens with the sheet at the right height.
+- Open the live site once on a real iPhone: sign in, check the glass blur in Safari, the home-indicator spacing under the tab bar, and that a trip opens on today with the whole itinerary listed.
+- Try the route strip: tap a stop (teal), tap two day numbers for a range, tap **All** to clear; scroll the list and watch the map and the day chip follow.
 - Sign in yourself first — the first sign-in seeds the Barcelona trip and grants editing to everyone who has signed in so far. Others appear in each trip's **People** list after their first sign-in.
 - `netlify dev` can't run Identity; test sign-in on the deploy or a Deploy Preview.
 
 ## What ships
 
-- App shell `public/` (Liquid Glass UI, email + password sign-in, PWA, offline cache `doctravels-v3`)
+- App shell `public/` (Liquid Glass UI, whole-trip itinerary with route-strip filter, email + password sign-in, PWA, offline cache `doctravels-v4`)
 - `netlify/functions/trips.mjs` — trips API, Postgres, version compare-and-set, server-side Edit/View enforcement keyed to the signed-in user, `members` roster
 - `netlify/functions/photos.mjs` — photo upload/serve, Netlify Blobs
 - `netlify/lib/auth.mjs` — verifies the Identity token on every API call

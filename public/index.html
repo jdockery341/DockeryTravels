@@ -73,6 +73,7 @@
     <div id="crosshair" class="hidden absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-full pointer-events-none text-accent drop-shadow-lg"></div>
     <div id="mapctl" class="absolute right-3 z-10 flex flex-col items-end gap-2.5 transition-[bottom,opacity] duration-500 ease-[cubic-bezier(.2,.8,.2,1)] lg:right-6"></div>
     <div id="attrib" class="absolute left-3 z-10 rounded-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md px-2 py-0.5 text-[10px] text-zinc-600 dark:text-zinc-300 transition-[bottom,opacity] duration-500 ease-[cubic-bezier(.2,.8,.2,1)]"></div>
+    <div id="follow" class="glass absolute left-3 z-10 flex h-7 items-center gap-1.5 rounded-full pl-2.5 pr-3 text-[12px] font-semibold text-zinc-900 dark:text-zinc-100 transition-[bottom,opacity] duration-500 ease-[cubic-bezier(.2,.8,.2,1)] lg:left-6" style="display:none"></div>
   </div>
   <nav id="tabbar" class="fixed inset-x-3 bottom-[var(--tb)] z-[45] lg:inset-x-auto lg:left-5 lg:bottom-5 lg:w-[400px]" style="--tb:calc(var(--sab) + 10px)"></nav>
 </div>
@@ -212,9 +213,31 @@ const persist = () => { try { localStorage.setItem(KEY, JSON.stringify({ v: 5, s
 const saveUi = persist;
 function save(tripId = ui.tripId) { persist(); if (tripId) { dirty.add(tripId); dirtySeq[tripId] = (dirtySeq[tripId] || 0) + 1; scheduleSync(); } }
 const T = () => db.trips.find(t => t.id === ui.tripId);
-const C = () => T().cities.find(c => c.id === ui.cityId) || T().cities[0];
-const cityEntries = () => T().entries.filter(e => e.cityId === C().id);
-const dayEntries = () => cityEntries().filter(e => e.date === ui.date).sort((a, b) => timeKey(a).localeCompare(timeKey(b)));
+const tripDates = () => [...new Set(T().cities.flatMap(c => c.dates || []))].sort();
+const ownerOf = d => T().cities.find(c => (c.dates || []).includes(d));
+const C = () => ownerOf(ui.day) || T().cities[0];
+const nextDay = d => { const x = new Date(d + 'T12:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
+// stops: each city's run of consecutive days, in trip order — a city visited twice is two stops
+function stops() {
+  const out = [];
+  T().cities.forEach(c => { let run = []; const flush = () => { if (run.length) out.push({ id: c.id + ':' + run[0], cityId: c.id, name: c.name, dates: run }); run = []; }; (c.dates || []).slice().sort().forEach(d => { if (run.length && nextDay(run[run.length - 1]) !== d) flush(); run.push(d); }); flush(); });
+  return out.sort((a, b) => a.dates[0].localeCompare(b.dates[0]));
+}
+// filter: the whole trip by default; tap stops to narrow to cities, tap day dots for one day or a range
+const F = () => ui.f || (ui.f = { stops: [], from: null, to: null });
+const filterOn = () => F().stops.length > 0 || !!F().from;
+function visibleDates() { const f = F(); let ds = tripDates(); if (f.stops.length) { const keep = new Set(stops().filter(s => f.stops.includes(s.id)).flatMap(s => s.dates)); ds = ds.filter(d => keep.has(d)); } if (f.from) { const to = f.to || f.from; ds = ds.filter(d => d >= f.from && d <= to); } return ds; }
+const visibleEntries = () => { const keep = new Set(visibleDates()); return T().entries.filter(e => keep.has(e.date)); };
+const dayEntries = (d = ui.day) => T().entries.filter(e => e.date === d).sort((a, b) => timeKey(a).localeCompare(timeKey(b)));
+const dayCities = d => { const names = T().cities.filter(c => (c.dates || []).includes(d)).map(c => c.name); dayEntries(d).forEach(e => { const c = T().cities.find(x => x.id === e.cityId); if (c && !names.includes(c.name)) names.push(c.name); }); return names.join(' · '); };
+function defaultDay() { const ds = tripDates(), today = todayISO(); if (ds.includes(today)) return today; return ds.find(d => T().entries.some(e => e.date === d)) || ds[0]; }
+function normalizeUi() {
+  const ds = tripDates(), f = F(), ids = new Set(stops().map(s => s.id));
+  f.stops = f.stops.filter(id => ids.has(id)); if (f.from && !ds.includes(f.from)) f.from = f.to = null; if (f.to && !ds.includes(f.to)) f.to = null;
+  if (!ds.includes(ui.day)) ui.day = defaultDay();
+  const vis = visibleDates(); if (vis.length && !vis.includes(ui.day)) ui.day = vis[0];
+  if (ui.selected && !entryById(ui.selected)) ui.selected = null;
+}
 const entryById = id => T().entries.find(e => e.id === id);
 
 function applyAppearance() {
@@ -311,10 +334,8 @@ function rerender() {
   if (ui.view === 'dashboard') { renderDash(); return; }
   const t = T(); if (!t || !roleOf(t, me())) { closeTrip(); if (t) toast('This trip is now hidden from you'); return; }
   const active = document.activeElement; if ($('.modal-panel') || (active && active.closest('#sheet form'))) return;
-  if (!t.cities.find(c => c.id === ui.cityId)) { ui.cityId = t.cities[0].id; ui.date = firstDate(); }
-  if (!C().dates.includes(ui.date)) ui.date = firstDate();
-  if (ui.selected && !entryById(ui.selected)) ui.selected = null;
-  renderHud(); renderSheet(false); if (!pinMode) renderControls(); if (map) updateMarkers();
+  normalizeUi();
+  renderHud(); renderSheet(false); renderFollow(); if (!pinMode) renderControls(); if (map) updateMarkers();
 }
 function setStatus(s) {
   status = s;
@@ -595,7 +616,7 @@ function pinHtml(n, mode, i) {
 function updateMarkers() {
   Object.values(markers).forEach(m => m.remove()); markers = {};
   const day = dayEntries().filter(pinned);
-  cityEntries().filter(pinned).forEach(e => {
+  visibleEntries().filter(pinned).forEach(e => {
     const idx = day.indexOf(e);
     const mode = e.id === ui.selected ? 'selected' : idx >= 0 ? 'active' : 'muted';
     const size = mode === 'selected' ? 40 : mode === 'active' ? 32 : 20;
@@ -634,17 +655,16 @@ function stopLocating() { if (geoWatch) { navigator.geolocation.clearWatch(geoWa
 function openTrip(id, restore = false) {
   ui.view = 'trip'; ui.tripId = id;
   const t = T(); if (!t || !roleOf(t, me())) { ui.view = 'dashboard'; return; }
-  if (!restore || !t.cities.find(c => c.id === ui.cityId)) { ui.cityId = t.cities[0].id; ui.date = firstDate(); ui.selected = null; }
-  if (ui.selected && !entryById(ui.selected)) ui.selected = null;
-  saveUi();
+  if (!restore) { ui.f = { stops: [], from: null, to: null }; ui.day = defaultDay(); ui.selected = null; }
+  normalizeUi(); saveUi();
   const trip = $('#trip'), dash = $('#dash');
   dash.classList.add('hidden');
   trip.classList.remove('hidden'); trip.classList.add('animate-fade');
   initMap(); tab = 'itinerary';
-  renderHud(); renderSheet(true); renderControls();
+  renderHud(); renderSheet(true); renderControls(); renderFollow();
   const sheet = $('#sheet');
   if (!isDesktop()) { sheet.style.transition = 'none'; sheet.style.transform = `translateY(${innerHeight}px)`; }
-  requestAnimationFrame(() => { map.invalidateSize(); sheet.style.transition = ''; detent = 'half'; layoutSheet(); fitTo(dayEntries(), !restore); updateMarkers(); });
+  requestAnimationFrame(() => { map.invalidateSize(); sheet.style.transition = ''; detent = 'half'; layoutSheet(); scrollToDay(ui.day, false); syncStrip(false); fitTo(dayEntries(), !restore); updateMarkers(); });
 }
 function closeTrip() {
   const trip = $('#trip');
@@ -654,18 +674,48 @@ function closeTrip() {
   renderDash(); $('#dash').classList.remove('hidden');
 }
 function restoreView() { if (ui.view === 'trip' && db.trips.find(t => t.id === ui.tripId)) openTrip(ui.tripId, true); else ui.view = 'dashboard'; }
-function firstDate() { const c = C(); const withEntries = c.dates.find(d => T().entries.some(e => e.cityId === c.id && e.date === d)); return withEntries || c.dates[0]; }
-function setCity(id) { if (ui.cityId === id) return; ui.cityId = id; ui.date = firstDate(); ui.selected = null; saveUi(); renderHud(); renderSheet(true); updateMarkers(); fitTo(dayEntries()); }
-function setDate(d) { if (ui.date === d) return; ui.date = d; ui.selected = null; saveUi(); renderSheet(true); updateMarkers(); fitTo(dayEntries()); }
+// ---------- filter actions (the route strip in the itinerary card) ----------
+function applyFilter() { normalizeUi(); saveUi(); renderSheet(true); renderFollow(); updateMarkers(); scrollToDay(ui.day, false); syncStrip(false); fitTo(dayEntries()); }
+function clearFilter() { if (!filterOn()) { ui.day = defaultDay(); saveUi(); scrollToDay(ui.day, true); return; } ui.f = { stops: [], from: null, to: null }; ui.selected = null; applyFilter(); }
+function toggleToday() { const f = F(), today = todayISO(); f.stops = []; if (f.from === today && !f.to) f.from = null; else { f.from = today; f.to = null; } ui.day = today; ui.selected = null; applyFilter(); }
+function toggleStop(id) { const f = F(); f.from = f.to = null; const on = !f.stops.includes(id); f.stops = on ? [...f.stops, id] : f.stops.filter(x => x !== id); const s = stops().find(x => x.id === id); if (on && s) ui.day = s.dates[0]; ui.selected = null; applyFilter(); }
+function tapDay(d) {
+  const f = F(); f.stops = [];
+  if (f.from && !f.to) { if (d === f.from) f.from = null; else { const [a, b] = d < f.from ? [d, f.from] : [f.from, d]; f.from = a; f.to = b; } }
+  else { f.from = d; f.to = null; }
+  ui.day = d; ui.selected = null; applyFilter();
+}
+let followLock = 0, followTimer;
+function scrollToDay(d, smooth) { const list = $('#sheet .list'), sec = list && d ? list.querySelector(`[data-daysec="${d}"]`) : null; if (!list || !sec) return; followLock = Date.now() + 700; list.scrollTo({ top: Math.max(0, sec.offsetTop - 2), behavior: smooth ? 'smooth' : 'auto' }); }
+function syncStrip(smooth = true) {
+  const strip = $('#sheet [data-strip]'); if (!strip || !ui.day) return;
+  const dot = strip.querySelector(`[data-day="${ui.day}"]`); if (!dot) return;
+  const pill = dot.closest('[data-stop]') || dot, L = pill.offsetLeft, R = L + pill.offsetWidth, w = strip.clientWidth; let x = strip.scrollLeft;
+  if (L < x + 6) x = L - 6; else if (R > x + w - 6) x = R - w + 6;
+  if (Math.abs(x - strip.scrollLeft) > 1) strip.scrollTo({ left: Math.max(0, x), behavior: smooth ? 'smooth' : 'auto' });
+}
+// the map follows the list: whichever day sits under the top of the list is the active day
+function onListScroll() {
+  if (ui.selected || Date.now() < followLock) return;
+  const list = $('#sheet .list'); if (!list) return;
+  const secs = $$('[data-daysec]', list); if (!secs.length) return;
+  let cur = secs[0]; const y = list.scrollTop + 56; for (const s of secs) { if (s.offsetTop <= y) cur = s; else break; }
+  if (list.scrollTop + list.clientHeight >= list.scrollHeight - 2) cur = secs[secs.length - 1];
+  const d = cur.dataset.daysec; if (d === ui.day) return;
+  ui.day = d; saveUi(); renderFollow(); syncStrip(); updateMarkers();
+  clearTimeout(followTimer); followTimer = setTimeout(() => fitTo(dayEntries()), 250);
+}
+function renderFollow() {
+  const el = $('#follow'); if (!el) return;
+  if (ui.view !== 'trip' || !T() || !ui.day || pinMode) { el.style.display = 'none'; return; }
+  el.style.display = ''; el.innerHTML = `<span class="size-1.5 rounded-full bg-accent ring-[3px] ring-accent/25"></span><span>${fmtDate(ui.day, {weekday:'short', month:'short', day:'numeric'})} · ${esc(C().name)}</span>`;
+}
 
 function renderHud() {
   const t = T();
   $('#hud').innerHTML = `
   <div class="flex items-center gap-2">
     <button data-act="back" class="glass lg:hidden size-11 shrink-0 grid place-items-center rounded-full text-zinc-800 dark:text-zinc-100 transition active:scale-95">${ICON.back}</button>
-    <div class="glass min-w-0 rounded-full p-1"><div class="flex gap-1 overflow-x-auto no-scrollbar rounded-full">
-      ${t.cities.map(c => `<button data-city="${c.id}" class="h-9 shrink-0 rounded-full px-4 text-[14px] font-medium transition-all duration-300 ${c.id === C().id ? 'bg-zinc-900 text-white shadow-[0_2px_8px_rgba(0,0,0,.25)] dark:bg-white dark:text-zinc-900' : 'text-zinc-900 dark:text-zinc-100'}">${esc(c.name)}</button>`).join('')}
-    </div></div>
     <button data-act="trip" title="${canEdit() ? 'Edit trip' : 'Trip details'}" class="glass ml-auto flex h-11 shrink-0 items-center gap-1 rounded-full pl-1.5 pr-2 transition active:scale-95">${stack(t, 'size-7 text-[10px]', 'ring-white dark:ring-zinc-800', '-space-x-2.5')}<span class="text-zinc-400">${ICON.chevron}</span></button>
   </div>`;
 }
@@ -675,32 +725,68 @@ function renderControls() {
     ${canEdit() ? `<button data-act="add" title="Add a place" class="size-14 grid place-items-center rounded-full bg-accent text-white shadow-[0_12px_32px_-6px_rgba(15,118,110,.7),inset_0_1px_0_rgba(255,255,255,.35)] transition hover:bg-accent-deep active:scale-95">${ICON.plus}</button>` : ''}`;
   renderTabbar();
 }
-const dayChip = d => { const n = cityEntries().filter(e => e.date === d).length, on = d === ui.date; return `<button data-date="${d}" class="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-all duration-300 active:scale-95 ${on ? 'bg-accent text-white shadow-[0_8px_20px_-8px_rgba(15,118,110,.7)]' : 'bg-black/[.06] text-zinc-900 dark:bg-white/[.1] dark:text-zinc-100'}"><span class="${on ? 'text-white/85' : 'text-zinc-700 dark:text-zinc-300'}">${fmtDate(d, {weekday:'short'})}</span><span class="font-semibold">${fmtDate(d, {day:'numeric'})}</span>${n ? `<span class="size-1.5 rounded-full ${on ? 'bg-white/80' : 'bg-accent'}"></span>` : ''}</button>`; };
+const rangeShort = (a, b) => { const A = new Date(a + 'T12:00'), B = new Date(b + 'T12:00'); return `${A.toLocaleDateString('en-US', {month:'short', day:'numeric'})} – ${B.toLocaleDateString('en-US', A.getMonth() === B.getMonth() ? {day:'numeric'} : {month:'short', day:'numeric'})}`; };
+function scopeLabel(days, n) {
+  const t = T(), f = F(), places = `${n} ${n === 1 ? 'place' : 'places'}`;
+  if (!days.length) return 'No days yet';
+  if (!filterOn()) return `${days.length} ${days.length === 1 ? 'day' : 'days'} · ${t.cities.length} ${t.cities.length === 1 ? 'city' : 'cities'} · ${places}`;
+  const span = days.length === 1 ? fmtDate(days[0], {weekday:'short', month:'short', day:'numeric'}) : rangeShort(days[0], days[days.length - 1]);
+  const names = [...new Set(f.stops.length ? stops().filter(s => f.stops.includes(s.id)).map(s => s.name) : days.map(d => (ownerOf(d) || {}).name).filter(Boolean))];
+  return `${names.length > 2 ? names.length + ' cities' : names.join(' & ')} · ${span} · ${places}`;
+}
+// All · Today · one pill per stop with its days as dots (ringed dot = today)
+function stripHtml() {
+  const f = F(), today = todayISO(), on = filterOn(), vis = new Set(visibleDates()), hasToday = tripDates().includes(today);
+  const todayOn = !f.stops.length && f.from === today && !f.to;
+  const neutral = 'bg-black/[.06] text-zinc-900 dark:bg-white/[.1] dark:text-zinc-100', dark = 'bg-zinc-900 text-white shadow-[0_2px_8px_rgba(0,0,0,.25)] dark:bg-white dark:text-zinc-900', teal = 'bg-accent text-white shadow-[0_8px_20px_-8px_rgba(15,118,110,.7)]';
+  const pill = (attrs, look, inner, extra = '') => `<button ${attrs} class="flex h-9 shrink-0 items-center rounded-full px-3.5 text-[13px] font-semibold transition-all duration-300 active:scale-95 ${look} ${extra}">${inner}</button>`;
+  // each day is a tappable numbered disc: tap one for that day, tap a second for the range between
+  const dot = (d, inTeal) => { const isT = d === today, inRange = on && vis.has(d); const look = inTeal ? `bg-white/25 text-white ${isT ? 'ring-2 ring-white/70' : ''}` : inRange || isT ? `bg-accent text-white ${isT ? 'ring-[3px] ring-accent/25' : ''}` : `bg-black/[.07] dark:bg-white/[.12] ${d < today ? 'text-zinc-500 dark:text-zinc-400' : 'text-zinc-800 dark:text-zinc-100'}`; return `<span data-day="${d}" class="grid size-7 shrink-0 place-items-center rounded-full text-[12px] font-semibold tabular-nums transition-all duration-300 ${look} ${f.from && !vis.has(d) ? 'opacity-40' : ''}">${fmtDate(d, {day:'numeric'})}</span>`; };
+  return `<div class="mt-3 flex items-center gap-1.5 pl-5">
+    ${pill('data-filter="all"', on ? neutral : dark, 'All')}
+    <div data-strip class="relative min-w-0 flex-1 overflow-x-auto no-scrollbar"><div class="flex w-max items-center gap-1.5 pr-5">
+      ${hasToday ? pill('data-filter="today"', todayOn ? teal : neutral, `<span class="mr-2 size-2 rounded-full ${todayOn ? 'bg-white' : 'bg-accent'}"></span>Today`) : ''}
+      ${stops().map(s => { const sel = f.stops.includes(s.id), dim = on && !sel && !s.dates.some(d => vis.has(d)); return pill(`data-stop="${esc(s.id)}"`, sel ? teal : neutral, `${esc(s.name)}<span class="ml-2 -mr-1.5 flex items-center gap-1">${s.dates.map(d => dot(d, sel)).join('')}</span>`, dim ? 'opacity-50' : ''); }).join('')}
+    </div></div>
+  </div>`;
+}
+function daySection(d, anim) {
+  const es = dayEntries(d), today = todayISO(), isT = d === today;
+  return `<section data-daysec="${d}">
+    <div class="sticky top-0 z-10 -mx-2.5 flex items-center gap-2 bg-[var(--glass-bg-strong)] px-5 pb-1.5 pt-3.5 backdrop-blur-xl">
+      <span class="text-[15px] font-bold tracking-tight ${isT ? 'text-accent' : d < today ? 'text-zinc-500 dark:text-zinc-400' : ''}">${fmtDate(d, {weekday:'short', month:'short', day:'numeric'})}</span>
+      ${isT ? '<span class="rounded-full bg-accent px-1.5 py-[3px] text-[10px] font-bold uppercase leading-none tracking-wider text-white">Today</span>' : ''}
+      <span class="ml-auto flex min-w-0 items-center gap-1 text-[13px] font-semibold text-zinc-600 dark:text-zinc-300"><span class="shrink-0">${ICON.pinSm.replace('size-3.5', 'size-3')}</span><span class="truncate">${esc(dayCities(d))}</span></span>
+    </div>
+    <div class="flex flex-col">${es.length ? es.map((e, i) => tileHtml(e, i, e.id === ui.selected, anim)).join('') : `<div class="flex items-center gap-3 px-3 py-2.5 text-[14px] text-zinc-400 dark:text-zinc-500"><span class="grid w-6 shrink-0 place-items-center"><span class="size-2 rounded-full bg-zinc-300 dark:bg-zinc-600"></span></span><span>Nothing planned</span>${canEdit() ? `<button data-addday="${d}" class="ml-auto h-8 rounded-full bg-black/[.05] dark:bg-white/[.08] px-3 text-[13px] font-semibold text-accent transition active:scale-95">Add</button>` : ''}</div>`}</div>
+  </section>`;
+}
 
 function renderSheet(anim = false) {
-  const t = T(), c = C(), entries = dayEntries(), n = entries.length;
-  const list = $('#sheet .list'); const scroll = list ? list.scrollTop : 0;
+  const t = T(), days = visibleDates(), n = visibleEntries().length;
+  const list = $('#sheet .list'), scroll = list ? list.scrollTop : 0, strip = $('#sheet [data-strip]'), sx = strip ? strip.scrollLeft : 0;
   $('#sheet').innerHTML = `
     <div class="hidden lg:flex shrink-0 items-center gap-3 pb-1" style="padding-top:calc(var(--sat) + 20px)">
       <button data-act="back" class="glass size-10 grid place-items-center rounded-full transition active:scale-95">${ICON.back}</button>
       <div class="min-w-0"><h1 class="truncate text-[22px] font-bold tracking-tight">${esc(t.name)}</h1><p class="text-sm text-zinc-500 dark:text-zinc-400">${rangeLabel(t.start, t.end)}</p></div>
     </div>
-    <div class="glass shrink-0 rounded-[28px] pb-3 lg:pt-3">
+    <div class="glass shrink-0 rounded-[28px] pb-3.5 lg:pt-3">
       <div data-handle class="cursor-grab touch-none px-5 pt-1.5 lg:cursor-default">
         <div class="lg:hidden flex justify-center pb-2"><div class="h-1.5 w-10 rounded-full bg-black/15 dark:bg-white/20"></div></div>
         <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0"><h2 class="truncate text-[22px] font-bold leading-tight tracking-tight">${esc(c.name)}</h2><p class="mt-0.5 text-[14px] text-zinc-700 dark:text-zinc-300">${c.country ? esc(c.country) + ' · ' : ''}${fmtDate(ui.date, {weekday:'long', month:'short', day:'numeric'})} · ${n} ${n === 1 ? 'place' : 'places'}</p></div>
+          <div class="min-w-0"><h2 class="lg:hidden truncate text-[22px] font-bold leading-tight tracking-tight">${esc(t.name)}</h2><p class="mt-0.5 text-[14px] text-zinc-700 dark:text-zinc-300 lg:mt-0">${scopeLabel(days, n)}</p></div>
           <div class="flex shrink-0 items-center gap-1.5 pt-1.5">${canEdit() ? '' : '<span class="rounded-full bg-black/[.06] dark:bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">View only</span>'}<span data-sync-badge class="hidden rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400"></span></div>
         </div>
       </div>
-      <div class="mt-2.5 flex gap-2 overflow-x-auto no-scrollbar px-5">${c.dates.map(dayChip).join('')}</div>
+      ${stripHtml()}
     </div>
     <div class="glass glass-strong flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] transition-opacity duration-300">
-      <div class="list flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 py-2.5">
-        ${entries.length ? entries.map((e, i) => tileHtml(e, i, e.id === ui.selected, anim)).join('') : `<div class="animate-fade my-auto flex flex-col items-center px-4 py-8 text-center"><span class="size-12 grid place-items-center rounded-full bg-accent/10 text-accent">${ICON.pin}</span><p class="mt-3 text-[16px] font-semibold">Nothing planned for ${fmtDate(ui.date, {weekday:'long'})} yet</p>${canEdit() ? `<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Add a place and it shows up here and on the map.</p><button data-act="add" class="mt-4 h-11 rounded-full bg-accent px-5 text-[15px] font-semibold text-white transition active:scale-95">Add a place</button>` : ''}</div>`}
+      <div class="list relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2.5 pb-2.5">
+        ${days.length ? days.map(d => daySection(d, anim)).join('') : `<div class="animate-fade my-auto flex flex-col items-center px-4 py-8 text-center"><span class="size-12 grid place-items-center rounded-full bg-accent/10 text-accent">${ICON.pin}</span><p class="mt-3 text-[16px] font-semibold">No days on this trip yet</p>${canEdit() ? '<p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Set the trip dates to get started.</p>' : ''}</div>`}
       </div>
     </div>`;
   const nl = $('#sheet .list'); if (nl && !anim) nl.scrollTop = scroll;
+  const ns = $('#sheet [data-strip]'); if (ns && !anim) ns.scrollLeft = sx;
   setStatus(status);
 }
 function tileHtml(e, i, open, anim) {
@@ -747,7 +833,11 @@ function selectEntry(id, { fromMap = false } = {}) {
   const prev = ui.selected; ui.selected = id; saveUi();
   if (id) {
     const e = entryById(id);
-    if (e.cityId !== ui.cityId || e.date !== ui.date) { ui.cityId = e.cityId; ui.date = e.date; renderHud(); renderSheet(true); }
+    const hidden = !visibleDates().includes(e.date);
+    if (hidden) ui.f = { stops: [], from: null, to: null };
+    if (e.date !== ui.day) { ui.day = e.date; renderFollow(); }
+    if (hidden) renderSheet(true); else syncStrip();
+    saveUi();
   }
   const sheet = $('#sheet');
   [prev, id].forEach(x => { if (!x) return; const tile = sheet.querySelector(`.tile[data-id="${x}"]`); if (tile) setTileOpen(tile, x === id); });
@@ -787,6 +877,7 @@ function positionControls(vis) {
   const ctl = $('#mapctl'), hide = !isDesktop() && vis >= SHEET_H() - 72;
   ctl.style.bottom = (isDesktop() ? 24 : vis + 12) + 'px'; ctl.style.opacity = hide ? '0' : '1'; ctl.style.pointerEvents = hide ? 'none' : '';
   $('#attrib').style.bottom = (isDesktop() ? 4 : vis + 4) + 'px'; $('#attrib').style.opacity = hide ? '0' : '1';
+  const fo = $('#follow'); fo.style.bottom = (isDesktop() ? 24 : vis + 26) + 'px'; fo.style.opacity = hide ? '0' : '1';
 }
 (function enableDrag() {
   let startY = 0, startTy = 0, dragging = false; const sheet = $('#sheet');
@@ -809,6 +900,7 @@ function positionControls(vis) {
     detent = order[i]; layoutSheet();
   };
   sheet.addEventListener('pointerup', end); sheet.addEventListener('pointercancel', end);
+  sheet.addEventListener('scroll', ev => { if (ev.target instanceof Element && ev.target.classList.contains('list')) onListScroll(); }, true);
 })();
 
 // ---------- floating tab bar (trip view): Trips · Itinerary · Photos · Locate ----------
@@ -851,7 +943,7 @@ const field = (name, label, value = '', attrs = '') => `<label class="block"><sp
 const selectField = (name, label, opts, value) => `<label class="block"><span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400">${label}</span><select name="${name}" class="mt-1 h-11 w-full appearance-none rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-3 text-[15px] outline-none ring-accent/40 transition focus:ring-2">${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
 
 function openAddMethods() {
-  draft = { cityId: ui.cityId, date: ui.date };
+  draft = { cityId: C().id, date: ui.day };
   const opt = (m, title, sub, icon) => `<button data-method="${m}" class="flex w-full items-center gap-3.5 rounded-2xl bg-black/[.05] dark:bg-white/[.08] px-4 py-3.5 text-left transition hover:bg-black/[.08] dark:hover:bg-white/[.12] active:scale-[.985]"><span class="size-10 shrink-0 grid place-items-center rounded-full bg-white dark:bg-zinc-900 text-accent shadow-sm">${icon}</span><span class="min-w-0"><span class="block font-medium">${title}</span><span class="block text-sm text-zinc-500 dark:text-zinc-400">${sub}</span></span></button>`;
   openModal(`${modalHead('Add a place')}<div class="flex flex-col gap-2">
     ${opt('search', 'Search places', 'Restaurants, sights, addresses', ICON.search)}
@@ -916,24 +1008,24 @@ function parseLink(url) {
   return { name, website, yelp };
 }
 function startPinMode() {
-  pinMode = true; closeModal();
+  pinMode = true; closeModal(); renderFollow();
   if (!isDesktop()) { detent = 'peek'; layoutSheet(); }
   if (draft && pinned(draft)) map.setView([draft.lat, draft.lng], Math.max(map.getZoom(), 16));
   const ch = $('#crosshair'); ch.classList.remove('hidden'); ch.innerHTML = ICON.pinBig;
   $('#mapctl').innerHTML = `<div class="glass glass-strong animate-rise flex items-center gap-2 rounded-full p-1.5 pl-4"><span class="text-sm font-medium">Move the map to place the pin</span><button data-act="pincancel" class="h-10 rounded-full px-3 text-sm font-medium text-zinc-600 dark:text-zinc-300">Cancel</button><button data-act="pinconfirm" class="h-10 rounded-full bg-accent px-4 text-sm font-medium text-white transition active:scale-95">${pinReturn ? 'Pin here' : 'Add here'}</button></div>`;
 }
-function endPinMode() { pinMode = false; $('#crosshair').classList.add('hidden'); renderControls(); }
+function endPinMode() { pinMode = false; $('#crosshair').classList.add('hidden'); renderControls(); renderFollow(); }
 function openForm(editId = null) {
   const t = T(); const d = draft || {};
   const cityOpts = t.cities.map(c => [c.id, c.name]);
-  const cityId = d.cityId || ui.cityId; const city = t.cities.find(c => c.id === cityId) || t.cities[0];
+  const cityId = d.cityId || C().id; const city = t.cities.find(c => c.id === cityId) || t.cities[0];
   const dateOpts = city.dates.map(x => [x, fmtDate(x, {weekday:'short', month:'short', day:'numeric'})]);
   const has = pinned(d);
   openModal(`${modalHead(editId ? 'Edit place' : 'New place', editId ? null : 'add')}
     <form data-placeform class="flex flex-col gap-3">
       ${field('name', 'Name', d.name || '', 'required autofocus autocomplete="off"')}
       <div class="grid grid-cols-2 gap-3">${selectField('cityId', 'City', cityOpts, cityId)}${selectField('cat', 'Type', Object.entries(CATS).map(([k, v]) => [k, v.label]), d.cat || 'sight')}</div>
-      <div class="grid grid-cols-2 gap-3">${selectField('date', 'Day', dateOpts, d.date || ui.date)}${field('time', 'Time', d.time || '', 'type="time"')}</div>
+      <div class="grid grid-cols-2 gap-3">${selectField('date', 'Day', dateOpts, d.date || ui.day)}${field('time', 'Time', d.time || '', 'type="time"')}</div>
       ${field('address', 'Address', d.address || '', 'autocomplete="off"')}
       <div class="grid grid-cols-2 gap-3">${field('website', 'Website', d.website || '', 'inputmode="url"')}${field('yelp', 'Yelp', d.yelp || '', 'inputmode="url"')}</div>
       <div class="grid grid-cols-2 gap-3">${field('reserve', 'Reservation link', d.reserve || '', 'inputmode="url"')}${field('phone', 'Phone', d.phone || '', 'inputmode="tel"')}</div>
@@ -959,8 +1051,8 @@ function savePlace(form, editId) {
     t.entries.push(e);
   }
   const city = t.cities.find(c => c.id === e.cityId); if (!city.dates.includes(e.date)) { city.dates.push(e.date); city.dates.sort(); }
-  ui.cityId = e.cityId; ui.date = e.date; ui.selected = null; save();
-  closeModal(); renderHud(); renderSheet(false); updateMarkers();
+  ui.day = e.date; ui.selected = null; if (!visibleDates().includes(e.date)) ui.f = { stops: [], from: null, to: null }; save();
+  closeModal(); renderSheet(false); renderFollow(); updateMarkers();
   setTimeout(() => selectEntry(e.id), 150);
   toast(editId ? 'Saved' : `Added to ${fmtDate(e.date, {weekday:'long'})}`);
 }
@@ -990,7 +1082,7 @@ async function createTrip(form) {
   db.trips.push(trip); save(trip.id); closeModal();
   setTimeout(() => openTrip(trip.id), 200);
   for (const c of cities) {
-    try { const [p] = await photon(c.name, { limit: 1 }); if (p) { c.center = [p.lat, p.lng]; c.country = p.country; c.zoom = 13; save(trip.id); if (ui.tripId === trip.id && ui.cityId === c.id) { renderSheet(false); fitTo(dayEntries()); } } } catch (e) {}
+    try { const [p] = await photon(c.name, { limit: 1 }); if (p) { c.center = [p.lat, p.lng]; c.country = p.country; c.zoom = 13; save(trip.id); if (ui.tripId === trip.id) { renderSheet(false); renderFollow(); if (C().id === c.id) fitTo(dayEntries()); } } } catch (e) {}
   }
 }
 function openAccount() {
@@ -1067,10 +1159,8 @@ function saveTrip(form) {
   Object.assign(t, { name, start: f.start, end: f.end, access, cover: tripDraft.cover || '' }); delete t.travelers;
   save(); closeModal();
   if (!roleOf(t, me())) { closeTrip(); toast('Trip updated · it\u2019s now hidden from you'); return; }
-  if (!t.cities.find(c => c.id === ui.cityId)) ui.cityId = t.cities[0].id;
-  if (!C().dates.includes(ui.date)) ui.date = firstDate();
-  ui.selected = null; saveUi();
-  renderHud(); renderSheet(false); renderControls(); updateMarkers(); fitTo(dayEntries());
+  ui.selected = null; normalizeUi(); saveUi();
+  renderHud(); renderSheet(false); renderFollow(); renderControls(); updateMarkers(); fitTo(dayEntries());
   toast('Trip updated');
 }
 // re-flow the days: trim days outside the range, pull stray places to the nearest day, hand uncovered days to the city before them
@@ -1162,11 +1252,13 @@ document.addEventListener('click', ev => {
   const tb = t.closest('[data-tab]'); if (tb) { onTab(tb.dataset.tab); return; }
   const vp = t.closest('[data-view-photo]'); if (vp) { viewPhoto(vp.dataset.viewPhoto); return; }
   const open = t.closest('[data-open]'); if (open) { openTrip(open.dataset.open); return; }
-  const city = t.closest('[data-city]'); if (city) { setCity(city.dataset.city); return; }
-  const date = t.closest('[data-date]'); if (date) { setDate(date.dataset.date); return; }
+  const fl = t.closest('[data-filter]'); if (fl) { if (fl.dataset.filter === 'all') clearFilter(); else toggleToday(); return; }
+  const dd = t.closest('[data-day]'); if (dd) { tapDay(dd.dataset.day); return; }
+  const st = t.closest('[data-stop]'); if (st) { toggleStop(st.dataset.stop); return; }
+  const ad = t.closest('[data-addday]'); if (ad) { if (!canEdit()) { toast('This trip is view only for you'); return; } ui.day = ad.dataset.addday; saveUi(); openAddMethods(); return; }
   const rate = t.closest('[data-rate]'); if (rate) { if (!canEdit()) { toast('This trip is view only for you'); return; } const e = entryById(rate.closest('.tile').dataset.id); e.rating = Number(rate.dataset.rate) === e.rating ? 0 : Number(rate.dataset.rate); save(); renderSheet(false); return; }
   const method = t.closest('[data-method]'); if (method) { ({ search: openSearch, link: openLink, pin: startPinMode, here: useCurrentLocation })[method.dataset.method](); return; }
-  const res = t.closest('[data-result]'); if (res) { const p = $('[data-results]')._items[Number(res.dataset.result)]; draft = { ...draft, name: p.name, address: p.address, lat: p.lat, lng: p.lng, cat: p.cat, website: p.website, yelp: p.yelp, cityId: p.cityId || ui.cityId, date: (p.cityId && p.cityId !== ui.cityId) ? T().cities.find(c => c.id === p.cityId).dates[0] : ui.date }; openForm(); return; }
+  const res = t.closest('[data-result]'); if (res) { const p = $('[data-results]')._items[Number(res.dataset.result)]; draft = { ...draft, name: p.name, address: p.address, lat: p.lat, lng: p.lng, cat: p.cat, website: p.website, yelp: p.yelp, cityId: p.cityId || C().id, date: (p.cityId && p.cityId !== C().id) ? T().cities.find(c => c.id === p.cityId).dates[0] : ui.day }; openForm(); return; }
   const role = t.closest('[data-role]'); if (role) { tripDraft.access[role.dataset.role] = role.dataset.value; role.parentElement.outerHTML = roleSeg(role.dataset.role); return; }
   const setting = t.closest('[data-setting]'); if (setting) { db.settings[setting.dataset.setting] = setting.dataset.value; saveUi(); applyAppearance(); if (map) setTiles(); openAccount(); return; }
   if (t.closest('[data-close]')) { closeModal(); return; }
